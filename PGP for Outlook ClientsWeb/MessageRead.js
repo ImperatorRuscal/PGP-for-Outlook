@@ -123,8 +123,8 @@ function waitForRecipients() {
 async function encryptMessage(messageText) {
     var encryptTo = [];
     encryptTo.push(privateKey.toPublic());
-    //encryptTo.push(await fetchPublicPGPKeyByEmailUsingVKS('emailaddress'));
-    //encryptTo.push(await fetchPublicPGPKeyByEmailUsingWKD('emailaddress'));
+    //encryptTo.push(await fetchPublicPGPKeyByEmailUsingVKS('rrockett@acmewidget.com'));
+    encryptTo.push(await fetchPublicPGPKeyByEmailUsingWKD('rrockett@acmewidget.com'));
     if (!privateKey.isDecrypted()) {
         console.log('Decrypting the private key for local use');
         privateKey = await openpgp.decryptKey({ privateKey: privateKey, passphrase: (await smalltalk.prompt('PGP Passphrase', 'Please enter your passphrase to continue.', '', {type: 'password'})) })
