@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PGP Key Management</title>
+
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="https://static2.sharepointonline.com/files/fabric/office-ui-fabric-core/9.6.0/css/fabric.min.css" />
+  <link rel="stylesheet" href="css/pgp-addon.css" />
+</head>
+<body>
+<div class="pgp-pane" id="app">
+
+  <!-- ── Global status bar ──────────────────────────────── -->
+  <div id="status-bar" class="pgp-hidden"></div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       MY KEY PAIR
+  ══════════════════════════════════════════════════════════ -->
+  <section class="pgp-section" id="section-my-key">
+    <div class="pgp-section-title">My PGP Key Pair</div>
+
+    <!-- No key exists yet -->
+    <div id="panel-no-key">
+      <div class="pgp-alert pgp-alert--info pgp-mt-sm">
+        You don't have a PGP key pair yet. Generate one below to start
+        encrypting and signing messages.
+      </div>
+      <button class="pgp-btn pgp-btn--primary pgp-btn--full pgp-mt-md" id="btn-show-generate">
+        Generate New Key Pair
+      </button>
+    </div>
+
+    <!-- Key exists — show info -->
+    <div id="panel-has-key" class="pgp-hidden">
+      <div class="pgp-row pgp-row--between">
+        <div>
+          <div id="key-uid" style="font-weight:600;"></div>
+          <div id="key-created" class="pgp-key-item__meta"></div>
+          <div id="key-expires" class="pgp-key-item__meta"></div>
+        </div>
+        <span id="key-status-badge" class="pgp-badge pgp-badge--success">Active</span>
+      </div>
+      <span class="pgp-fingerprint" id="key-fingerprint"></span>
+
+      <div class="pgp-row pgp-mt-md" style="flex-wrap:wrap;gap:6px;">
+        <button class="pgp-btn pgp-btn--secondary" id="btn-copy-pubkey">Copy Public Key</button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-send-pubkey">Send via Email</button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-export-key">Download Backup</button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-show-generate">Regenerate Key</button>
+        <button class="pgp-btn pgp-btn--danger"    id="btn-delete-key">Delete Key</button>
+      </div>
+      <p style="font-size:11px;color:#605e5c;margin:6px 0 0;">
+        <strong>Download Backup</strong> saves your passphrase-protected private key as
+        a <code>.asc</code> file. Keep this file secure — it cannot be decrypted without
+        your passphrase.
+      </p>
+    </div>
+
+    <!-- Generate form (hidden until triggered) -->
+    <div id="panel-generate-form" class="pgp-hidden" style="margin-top:12px;border-top:1px solid #edebe9;padding-top:12px;">
+      <div class="pgp-section-title" style="margin-bottom:12px;">Generate Key Pair</div>
+
+      <div class="pgp-field">
+        <label for="gen-name">Full name</label>
+        <input type="text" id="gen-name" placeholder="Alice Smith" autocomplete="off" />
+      </div>
+      <div class="pgp-field">
+        <label for="gen-email">Email address</label>
+        <input type="email" id="gen-email" placeholder="alice@example.com" autocomplete="off" />
+      </div>
+      <div class="pgp-field">
+        <label for="gen-passphrase">Passphrase</label>
+        <input type="password" id="gen-passphrase" placeholder="Strong passphrase" autocomplete="new-password" />
+        <span class="pgp-field__hint">This passphrase protects your private key. Store it safely — it cannot be recovered.</span>
+      </div>
+      <div class="pgp-field">
+        <label for="gen-passphrase-confirm">Confirm passphrase</label>
+        <input type="password" id="gen-passphrase-confirm" placeholder="Repeat passphrase" autocomplete="new-password" />
+      </div>
+
+      <div id="gen-status" class="pgp-hidden pgp-mt-sm"></div>
+
+      <div class="pgp-row pgp-mt-md">
+        <button class="pgp-btn pgp-btn--primary" id="btn-generate-confirm" style="flex:1;">
+          <span class="pgp-spinner pgp-hidden" id="gen-spinner"></span>
+          Generate
+        </button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-generate-cancel">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════
+       CONTACTS' KEYRING
+  ══════════════════════════════════════════════════════════ -->
+  <section class="pgp-section" id="section-keyring">
+    <div class="pgp-row pgp-row--between" style="margin-bottom:10px;">
+      <div class="pgp-section-title" style="margin:0;">Contacts' Keyring</div>
+      <span id="keyring-count" class="pgp-badge pgp-badge--neutral">0 keys</span>
+    </div>
+
+    <!-- Search / lookup -->
+    <div class="pgp-row" style="margin-bottom:10px;">
+      <input type="email" id="keyring-search" placeholder="Find key for email…" style="flex:1;padding:6px 8px;border:1px solid #8a8886;border-radius:2px;font-size:13px;" />
+      <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-find-key">Find</button>
+      <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-show-import">Import</button>
+    </div>
+
+    <!-- Search result -->
+    <div id="find-result" class="pgp-hidden pgp-mt-sm"></div>
+
+    <!-- Import form -->
+    <div id="panel-import-form" class="pgp-hidden" style="margin-bottom:10px;padding:10px;background:#fff;border:1px solid #edebe9;border-radius:3px;">
+      <div class="pgp-field" style="margin-bottom:6px;">
+        <label for="import-email">Email address</label>
+        <input type="email" id="import-email" placeholder="contact@example.com" autocomplete="off" />
+      </div>
+      <div class="pgp-field" style="margin-bottom:6px;">
+        <label for="import-key-text">Armored public key</label>
+        <textarea id="import-key-text" rows="5" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"></textarea>
+      </div>
+      <div id="import-status" class="pgp-hidden"></div>
+      <div class="pgp-row pgp-mt-sm">
+        <button class="pgp-btn pgp-btn--primary pgp-btn--sm" id="btn-import-confirm">Save Key</button>
+        <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-import-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Key list -->
+    <ul class="pgp-key-list" id="keyring-list">
+      <li class="pgp-empty" id="keyring-empty">No contacts' keys stored yet.</li>
+    </ul>
+
+    <!-- Storage warning -->
+    <div id="storage-warning" class="pgp-alert pgp-alert--warning pgp-hidden pgp-mt-sm">
+      Storage is nearly full. Consider removing unused keys before adding more.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════
+       ORGANISATION SETTINGS
+  ══════════════════════════════════════════════════════════ -->
+  <section class="pgp-section" id="section-org">
+    <div class="pgp-section-title">Organisation Settings</div>
+    <p style="font-size:12px;color:#605e5c;margin:0 0 10px 0;">
+      These settings are normally loaded automatically from your organisation's
+      domain. Use the override below only if auto-discovery fails.
+    </p>
+
+    <div id="org-status" class="pgp-mt-sm"></div>
+
+    <hr class="pgp-divider" />
+
+    <div class="pgp-section-title" style="font-size:11px;">Manual Override</div>
+
+    <label class="pgp-toggle" style="margin-bottom:10px;">
+      <input type="checkbox" id="org-key-enabled" />
+      <span class="pgp-toggle__track"></span>
+      <span class="pgp-toggle__label">Include company key on all encrypted messages</span>
+    </label>
+
+    <div class="pgp-field">
+      <label for="org-key-required-toggle">Required (cannot be disabled per-message)</label>
+      <label class="pgp-toggle">
+        <input type="checkbox" id="org-key-required" />
+        <span class="pgp-toggle__track"></span>
+        <span class="pgp-toggle__label">Required</span>
+      </label>
+    </div>
+
+    <div class="pgp-field">
+      <label for="org-key-emails">Company key email(s)</label>
+      <input type="text" id="org-key-emails" placeholder="legal@company.com, security@company.com" />
+      <span class="pgp-field__hint">Comma-separated. These addresses will be looked up via WKD / VKS.</span>
+    </div>
+
+    <div id="org-save-status" class="pgp-hidden pgp-mt-sm"></div>
+
+    <div class="pgp-row pgp-mt-md">
+      <button class="pgp-btn pgp-btn--primary" id="btn-save-org">Save Override</button>
+      <button class="pgp-btn pgp-btn--secondary" id="btn-clear-org">Clear Override</button>
+    </div>
+  </section>
+
+</div><!-- /.pgp-pane -->
+
+<script type="module" src="KeyManagement.js"></script>
+</body>
+</html>
