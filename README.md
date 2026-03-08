@@ -44,17 +44,16 @@ software, plugins, or IT-managed infrastructure.
 ## Project structure
 
 ```
-PGP for Outlook Clients/
-└── PGP for Outlook ClientsManifest/
-    └── PGP for Outlook Clients.xml   ← Office add-in manifest
+manifest/
+└── manifest.xml                      ← Office add-in manifest
 
-PGP for Outlook ClientsWeb/           ← Web app (host on any HTTPS server)
+web/                                  ← Web app (host on any HTTPS server)
 ├── MessageRead.html / .js            ← Decrypt & verify incoming messages
 ├── MessageCompose.html / .js         ← Encrypt outgoing messages
 ├── KeyManagement.html / .js          ← Key generation, keyring, org settings
 ├── Functions/
 │   └── FunctionFile.html / .js       ← UI-less ribbon action host
-├── Scripts/
+├── js/
 │   ├── openpgp.min.mjs               ← OpenPGP.js v5 (ES module)
 │   ├── wkd.js                        ← WKD client
 │   └── pgp/                          ← Shared PGP modules
@@ -63,8 +62,9 @@ PGP for Outlook ClientsWeb/           ← Web app (host on any HTTPS server)
 │       ├── keyring.js                ← Contacts' key management
 │       ├── key-discovery.js          ← WKD / VKS / keyring lookup
 │       └── org-config.js            ← Organisation-level configuration
-└── Content/
-    └── pgp-addon.css                 ← Shared Fluent UI styles
+├── css/
+│   └── pgp-addon.css                 ← Shared Fluent UI styles
+└── images/                           ← Add-in icons
 
 docs/
 └── pgp-outlook-config.example.json  ← Example org config file (see below)
@@ -101,7 +101,7 @@ docs/
                org override)
 ```
 
-The five modules in `Scripts/pgp/` have a strict dependency direction:
+The five modules in `js/pgp/` have a strict dependency direction:
 
 ```
 pgp-core.js        ← Only file that imports openpgp.min.mjs directly
@@ -157,8 +157,8 @@ email; metadata encryption requires a different transport layer entirely).
 
 ### 1. Host the web app
 
-The `PGP for Outlook ClientsWeb/` folder is a static web app — no server-side
-code, no database.  Host it on any HTTPS-enabled server.
+The `web/` folder is a static web app — no server-side code, no database.
+Host it on any HTTPS-enabled server.
 
 ---
 
@@ -186,7 +186,7 @@ on every push to `main`/`master`.
 
 #### Option B: Azure Static Web Apps
 
-Drag and drop the `PGP for Outlook ClientsWeb/` folder into the Azure portal,
+Drag and drop the `web/` folder into the Azure portal,
 or connect it to the repository for automatic deployment.  Free tier available.
 
 #### Option C: SharePoint
@@ -204,8 +204,8 @@ Copy the folder to a virtual directory configured for HTTPS.
 
 ### 2. Update the manifest
 
-Open `PGP for Outlook Clients.xml` and replace every `~remoteAppUrl` with
-your hosting URL (the GitHub Pages URL, or whatever you chose in step 1).
+Open `manifest/manifest.xml` and replace every `~remoteAppUrl` with your
+hosting URL (the GitHub Pages URL, or whatever you chose in step 1).
 Do **not** include a trailing slash:
 
 ```xml
@@ -218,7 +218,7 @@ A quick way to do all substitutions at once (Linux / macOS):
 
 ```bash
 sed -i 's|~remoteAppUrl|https://your-org.github.io/your-repo|g' \
-    "PGP for Outlook Clients/PGP for Outlook ClientsManifest/PGP for Outlook Clients.xml"
+    manifest/manifest.xml
 ```
 
 Also replace the `<Id>` GUID with a freshly generated one so the manifest has
@@ -405,7 +405,6 @@ which user, timestamp) to a company endpoint configurable via the org config.
 - Any HTTPS-capable local development server
 - A Microsoft 365 developer account
   ([free via M365 Developer Program](https://developer.microsoft.com/microsoft-365/dev-program))
-- (Optional) Visual Studio 2019+ for the `.sln` / `.csproj` files
 
 ### Run locally
 
@@ -417,7 +416,7 @@ npm install -g office-addin-dev-certs http-server
 office-addin-dev-certs install
 
 # Serve the web app
-http-server "PGP for Outlook ClientsWeb" --ssl --port 3000
+http-server web --ssl --port 3000
 ```
 
 Update the manifest to point at `https://localhost:3000/`, then sideload it in
