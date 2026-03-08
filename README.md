@@ -1,1 +1,396 @@
-# PGP for Outlook Clients
+# PGP for Outlook
+
+A modern Microsoft Outlook add-in that brings end-to-end PGP encryption to the
+Outlook ribbon — on web, desktop, and mobile — without requiring any desktop
+software, plugins, or IT-managed infrastructure.
+
+---
+
+## Features
+
+| Feature | Details |
+|---------|---------|
+| **Key pair generation** | Ed25519/X25519 keys generated in-browser; private key stored passphrase-encrypted in Office roaming settings |
+| **Key export / sharing** | Copy public key to clipboard or open a pre-filled compose window to send it |
+| **Contacts' keyring** | Store, search, and remove trusted contacts' public keys |
+| **Key discovery** | Automatic lookup via WKD → VKS (keys.openpgp.org) → manual paste |
+| **Message encryption** | Encrypts the plain-text body and replaces it with PGP armor before sending |
+| **Message signing** | Optionally signs outgoing messages so recipients can verify authorship |
+| **Encrypt to self** | Your own public key is always included so you can read your Sent items |
+| **Company / legal key** | Org-level key added to every encrypted message (configurable, optional or required) |
+| **Attachment encryption** | Each attachment encrypted individually to `filename.ext.pgp` |
+| **Message decryption** | Detects and decrypts PGP-encrypted message bodies |
+| **Attachment decryption** | One-click decrypt and download for `.pgp` attachments |
+| **Signature verification** | Verifies inline signatures against the local keyring or WKD |
+| **Signed-only messages** | Displays and verifies PGP cleartext-signed messages |
+
+---
+
+## Requirements
+
+| Requirement | Minimum version |
+|-------------|----------------|
+| Microsoft 365 / Outlook | Any current subscription (web, Windows, Mac) |
+| Office JavaScript API | Mailbox **1.8** (required for compose-side attachment access) |
+| Browser / WebView2 | Edge WebView2 or any modern browser (Chrome 90+, Firefox 90+, Safari 15+) |
+
+> **Outlook 2019 and earlier (perpetual licence):** The add-in will load in
+> read mode, but compose-side attachment encryption requires Mailbox 1.8, which
+> is only available in Microsoft 365.  Message body encryption/decryption will
+> still work.
+
+---
+
+## Project structure
+
+```
+PGP for Outlook Clients/
+└── PGP for Outlook ClientsManifest/
+    └── PGP for Outlook Clients.xml   ← Office add-in manifest
+
+PGP for Outlook ClientsWeb/           ← Web app (host on any HTTPS server)
+├── MessageRead.html / .js            ← Decrypt & verify incoming messages
+├── MessageCompose.html / .js         ← Encrypt outgoing messages
+├── KeyManagement.html / .js          ← Key generation, keyring, org settings
+├── Functions/
+│   └── FunctionFile.html / .js       ← UI-less ribbon action host
+├── Scripts/
+│   ├── openpgp.min.mjs               ← OpenPGP.js v5 (ES module)
+│   ├── wkd.js                        ← WKD client
+│   └── pgp/                          ← Shared PGP modules
+│       ├── pgp-core.js               ← Cryptographic operations
+│       ├── key-storage.js            ← Office roaming settings wrapper
+│       ├── keyring.js                ← Contacts' key management
+│       ├── key-discovery.js          ← WKD / VKS / keyring lookup
+│       └── org-config.js            ← Organisation-level configuration
+└── Content/
+    └── pgp-addon.css                 ← Shared Fluent UI styles
+
+docs/
+└── pgp-outlook-config.example.json  ← Example org config file (see below)
+```
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Outlook ribbon                          │
+│  [ Encrypt ]  [ Decrypt ]  [ Manage Keys ]                   │
+└────────┬───────────────┬──────────────┬──────────────────────┘
+         │               │              │
+    Compose          Read pane      Key Mgmt
+    task pane        task pane      task pane
+         │               │              │
+         └───────┬────────┘              │
+                 │                       │
+         ┌───────▼───────────────────────▼────────┐
+         │           Shared JS modules             │
+         │  pgp-core ─ key-storage ─ keyring       │
+         │  key-discovery ─ org-config             │
+         └───────────────────────────────────────┬─┘
+                                                 │
+                          ┌──────────────────────┼──────────────────────┐
+                          │                      │                      │
+               Office Roaming           WKD / VKS             Well-known URL
+               Settings (32 KB)         key lookup             org config
+               (private key,            (network)              (network)
+               public key,
+               keyring,
+               org override)
+```
+
+The five modules in `Scripts/pgp/` have a strict dependency direction:
+
+```
+pgp-core.js        ← Only file that imports openpgp.min.mjs directly
+key-storage.js     ← Only file that calls Office.context.roamingSettings
+keyring.js         ← calls key-storage + pgp-core
+key-discovery.js   ← calls keyring + pgp-core + wkd.js
+org-config.js      ← calls key-storage + key-discovery
+```
+
+Page scripts (`MessageRead.js` etc.) import from the modules above and from
+Office.js.  No page script imports Office.js internals from another page script.
+
+---
+
+## Security model
+
+### Key storage
+The private key is **never stored in plaintext**.  It is stored in armored
+format, encrypted with AES-256 using the user's passphrase (standard OpenPGP
+S2K + symmetric cipher).  Only the encrypted blob is written to Office roaming
+settings; the plaintext private key material exists in browser memory only
+during the brief window of a single encrypt/decrypt/sign operation.
+
+### Passphrase handling
+The passphrase is entered by the user on **every operation** and is never
+cached — not in memory between operations, not in sessionStorage, not anywhere.
+This means a compromised browser session cannot reuse an unlocked key.
+
+If you need better UX with acceptable trade-offs (e.g. for a low-risk
+internal environment), see the [Roadmap](#roadmap) section for session-caching
+guidance.
+
+### Key discovery trust
+Keys discovered automatically from WKD or VKS are shown with their source
+before the user can save them.  VKS keys (keys.openpgp.org) have had their
+email addresses verified by the owner.  WKD keys are authoritative for the
+domain that published them.
+
+**Important:** Even verified keys should have their fingerprints confirmed
+out-of-band (phone call, Signal, in-person) before sending truly sensitive data
+to a new contact.
+
+### Scope of encryption
+The add-in encrypts the **plain-text content** of the message body.  Existing
+HTML formatting in the compose window is not preserved — the body is replaced
+with PGP armor.  Subject lines, sender/recipient headers, and message metadata
+are **not** encrypted (this is a fundamental limitation of OpenPGP applied to
+email; metadata encryption requires a different transport layer entirely).
+
+---
+
+## Deployment
+
+### 1. Host the web app
+
+The `PGP for Outlook ClientsWeb/` folder is a static web app.  Host it on any
+HTTPS-enabled server:
+
+- **Azure Static Web Apps** — drag and drop to deploy, free tier available
+- **IIS / Apache / Nginx** — copy the folder to a virtual directory
+- **GitHub Pages** — free for public repos
+- **SharePoint** — host as a SharePoint App Page
+
+> HTTPS is **required**.  Office add-ins will not load over plain HTTP.
+
+### 2. Update the manifest
+
+Open `PGP for Outlook Clients.xml` and replace every `~remoteAppUrl` with
+your hosting URL:
+
+```xml
+<bt:Url id="messageReadTaskPaneUrl"
+        DefaultValue="https://your-server.example.com/MessageRead.html"/>
+```
+
+Also replace the `<Id>` GUID with a freshly generated one:
+
+```xml
+<Id>YOUR-NEW-GUID-HERE</Id>
+```
+
+### 3. Deploy the manifest
+
+**Personal / testing:**
+Outlook → Get Add-ins → My Add-ins → Custom add-ins → **+ Add from file** →
+upload the XML.
+
+**Enterprise (centralised deployment):**
+Microsoft 365 Admin Center → Settings → Integrated Apps → Upload custom app.
+Or use the `New-OrganizationAddIn` PowerShell cmdlet.
+
+---
+
+## Organisation configuration (company / legal key)
+
+IT administrators can enable the company key feature — which automatically adds
+a designated legal or compliance key to every encrypted message — by publishing
+a small JSON file on their domain.
+
+### Step 1: Create the config file
+
+```json
+{
+  "companyKeyEnabled": true,
+  "companyKeyRequired": false,
+  "companyKeyEmails": ["legal@your-company.com"]
+}
+```
+
+See `docs/pgp-outlook-config.example.json` for the full documented template.
+
+| Field | Type | Default | Meaning |
+|-------|------|---------|---------|
+| `companyKeyEnabled` | boolean | `false` | Whether the company key feature is active |
+| `companyKeyRequired` | boolean | `false` | If `true`, users cannot opt out per-message |
+| `companyKeyEmails` | string[] | `[]` | Email addresses whose keys are added to every encryption |
+
+### Step 2: Publish it
+
+Upload the file to your web server at:
+
+```
+https://<your-email-domain>/.well-known/pgp-outlook-config.json
+```
+
+The add-in derives the URL from the signed-in user's email domain automatically.
+For `alice@acme.com` it fetches `https://acme.com/.well-known/pgp-outlook-config.json`.
+
+The file must be served without authentication.  If your add-in is hosted on a
+different origin you may need to add a CORS header:
+
+```
+Access-Control-Allow-Origin: https://your-addin-host.example.com
+```
+
+### Step 3: Publish the company public key
+
+The email address(es) in `companyKeyEmails` must have their PGP public keys
+discoverable via **WKD** (preferred) or **VKS** (keys.openpgp.org).
+
+### Fallback: manual override
+
+If your org cannot host a well-known file, an admin (or the user themselves)
+can set the org config manually via **Manage Keys → Organisation Settings →
+Manual Override → Save Override**.  This stores the config in the user's own
+roaming settings and takes precedence over any well-known URL.
+
+---
+
+## First-run guide (for users)
+
+### Initial setup
+
+1. Open any email in Outlook and click **Manage Keys** in the ribbon.
+2. Click **Generate New Key Pair** and fill in your name, email, and a strong
+   passphrase.  Write the passphrase down somewhere safe — it cannot be
+   recovered if lost.
+3. Click **Copy Public Key** and share it with contacts who need to send you
+   encrypted mail (email it, upload to [keys.openpgp.org](https://keys.openpgp.org),
+   or publish via WKD).
+
+### Adding a contact's key
+
+1. In **Manage Keys → Contacts' Keyring**, type the contact's email and click
+   **Find** — the add-in checks WKD and keys.openpgp.org automatically.
+2. If their key is found, verify the fingerprint with them out-of-band, then
+   click **Save to Keyring**.
+3. If no key is found, ask them to send you their public key and click
+   **Import** to paste it in.
+
+### Encrypting a message
+
+1. Compose a new message and add recipients normally.
+2. Click **Encrypt** in the ribbon.
+3. The pane shows key status for each recipient.  Resolve any missing keys.
+4. Optionally leave **Sign this message** checked (recommended).
+5. Click **Encrypt Message** and enter your passphrase (required to sign).
+6. Click Outlook's normal **Send** button.
+
+### Decrypting a message
+
+1. Open the encrypted message and click **Decrypt** in the ribbon.
+2. Enter your passphrase — the decrypted content appears in the task pane.
+3. For `.pgp` attachments, click **Decrypt & Download** next to each file.
+
+---
+
+## Roadmap
+
+Recommended enhancements not yet implemented, roughly in priority order:
+
+### High priority
+
+**Session passphrase cache**
+Hold the unlocked private key in memory for the lifetime of a single task pane
+session (cleared when the pane closes or when `Office.onBeforeUnload` fires).
+This avoids re-entering the passphrase per attachment.  Implement as a
+module-level variable in `pgp-core.js` or a dedicated `session-cache.js`, with
+an explicit `clearSessionCache()` call on unload.
+
+**Key expiration**
+`generateKeyPair()` currently creates keys with no expiration.  Best practice
+is a 2-year default.  Add a date picker to the generate form and pass
+`keyExpirationTime` to `openpgp.generateKey()`.
+
+**Private key backup / export**
+Let users download their encrypted private key as a `.asc` file.  This is the
+only recovery option if they lose their Microsoft 365 account.  Add a
+"Download key backup" button to Key Management that calls `getPrivateKey()` and
+triggers a file download via a `Blob` URL.
+
+**Revocation certificate**
+When generating a key pair, immediately generate a revocation certificate and
+prompt the user to save it.  If the private key is ever compromised, the cert
+can be uploaded to keyservers to invalidate the key.
+
+### Medium priority
+
+**One-click public key import from message body**
+When the read pane detects a `public-key` type in the message body, show an
+**Import to Keyring** button alongside the existing instructions.
+
+**Key refresh**
+Periodically re-fetch contact keys from WKD/VKS to pick up revocations and
+replacements.  A staleness threshold of ~7 days, checked silently on pane open,
+would cover most use cases.
+
+**Multiple UIDs per key**
+OpenPGP keys can carry multiple email addresses.  The current keyring uses a
+single email as the lookup key.  A fuller implementation would index by
+fingerprint and maintain a multi-email reverse index.
+
+### Lower priority
+
+**Test suite**
+Unit tests for `pgp-core.js` (no DOM required) using Vitest or Jest.
+Integration tests for the compose/read flows using Office mock libraries.
+
+**RSA-4096 option**
+Offer RSA as an alternative key type for users who must communicate with
+organisations running GnuPG < 2.1 (pre-2015 versions that don't support
+Ed25519).
+
+**Audit log**
+For compliance environments, log encryption/decryption events (which keys,
+which user, timestamp) to a company endpoint configurable via the org config.
+
+---
+
+## Development
+
+### Prerequisites
+
+- Any HTTPS-capable local development server
+- A Microsoft 365 developer account
+  ([free via M365 Developer Program](https://developer.microsoft.com/microsoft-365/dev-program))
+- (Optional) Visual Studio 2019+ for the `.sln` / `.csproj` files
+
+### Run locally
+
+The web app has no build step — it is plain HTML/CSS/ES modules.
+
+```bash
+# Install a dev server with self-signed HTTPS certs
+npm install -g office-addin-dev-certs http-server
+office-addin-dev-certs install
+
+# Serve the web app
+http-server "PGP for Outlook ClientsWeb" --ssl --port 3000
+```
+
+Update the manifest to point at `https://localhost:3000/`, then sideload it in
+Outlook following
+[Microsoft's sideloading guide](https://docs.microsoft.com/en-us/office/dev/add-ins/testing/test-debug-office-add-ins).
+
+---
+
+## Dependencies
+
+| Library | Version | Licence | Purpose |
+|---------|---------|---------|---------|
+| [OpenPGP.js](https://openpgpjs.org/) | 5.5.0 | LGPL-3.0 | All cryptographic operations |
+| [wkd-client](https://github.com/wiktor-k/openpgp-wkd) | bundled | LGPL-3.0 | WKD key lookup |
+| [Office.js](https://docs.microsoft.com/en-us/javascript/api/overview/outlook) | CDN | MIT | Outlook add-in API |
+| [Fluent UI Core](https://developer.microsoft.com/en-us/fluentui) | 9.6.0 | MIT | CSS design system |
+
+---
+
+## Licence
+
+Provided as-is for evaluation and development.  See individual dependency
+licences above for third-party components.

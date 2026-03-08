@@ -1,12 +1,32 @@
 /**
  * key-discovery.js
- * Resolves email addresses to PGP public keys using multiple sources:
- *   1. Local keyring (roaming settings)
- *   2. Web Key Directory (WKD)
- *   3. Verified Key Server (VKS) — keys.openpgp.org
+ * Resolves email addresses to PGP public keys using multiple sources,
+ * tried in this order:
  *
- * Import a key found via WKD/VKS into the local keyring using keyring.addContactKey()
- * after user confirmation.
+ *  1. Local keyring (fastest — no network round-trip)
+ *  2. WKD  — Web Key Directory (RFC 9051-style lookup)
+ *  3. VKS  — Verified Key Server (keys.openpgp.org)
+ *
+ * About WKD:
+ *   WKD lets a domain owner publish their users' public keys on their own web
+ *   server at a predictable well-known URL, e.g.:
+ *     https://example.com/.well-known/openpgpkey/hu/<zbase32-hash>
+ *   Keys published via WKD are authoritative for that domain and are returned
+ *   as binary (not armored).  Many organisations and providers (Proton Mail,
+ *   Fastmail, etc.) support WKD natively.
+ *
+ * About VKS (keys.openpgp.org):
+ *   The VKS only returns keys whose email addresses have been verified by the
+ *   key owner (they clicked a confirmation link).  This means you can be
+ *   reasonably confident a VKS key genuinely belongs to that email address,
+ *   unlike the old SKS keyserver network.
+ *
+ * TRUST WARNING: Even with verified sources, key fingerprints should be
+ * confirmed out-of-band (phone, in-person, Signal safety number, etc.) before
+ * sending sensitive data to a newly discovered key.
+ *
+ * To persist a discovered key so it doesn't need to be looked up again, call
+ * keyring.addContactKey(email, armoredKey) after the user confirms the key.
  */
 
 import WKD from '../wkd.js';

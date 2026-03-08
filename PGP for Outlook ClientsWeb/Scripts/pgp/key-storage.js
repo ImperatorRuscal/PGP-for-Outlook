@@ -2,17 +2,30 @@
  * key-storage.js
  * Wrapper around Office.context.roamingSettings for persisting PGP keys.
  *
- * Storage keys:
- *   pgp_private_key  - Armored, passphrase-encrypted private key string
- *   pgp_public_key   - Armored public key string
- *   pgp_key_meta     - Object: { name, email, fingerprint, keyId, created, expires }
- *   pgp_keyring      - Object: { "email@example.com": "-----BEGIN PGP PUBLIC KEY BLOCK-----..." }
- *   pgp_org_override - Object: manual org config override
+ * WHY roaming settings?
+ *   Office roaming settings are tied to the user's Microsoft 365 account and
+ *   sync automatically across all devices where the user is signed in.  This
+ *   means keys generated on one machine are immediately available in Outlook
+ *   Web, desktop, and mobile without any manual export/import step.
  *
- * Note: Office roaming settings have a ~32KB total limit.
- * A passphrase-encrypted private key is typically 3-6KB armored.
- * Each contact public key is typically 1-3KB armored.
- * Monitor estimateStorageUsage() to avoid hitting the ceiling.
+ *   The trade-off is a tight storage cap (~32 KB for all settings combined).
+ *   We store the private key encrypted at rest (AES-256, protected by the
+ *   user's passphrase) and never store the passphrase itself.
+ *
+ * Storage key layout:
+ *   pgp_private_key  — Armored, passphrase-encrypted private key string
+ *   pgp_public_key   — Armored public key string
+ *   pgp_key_meta     — Object: { name, email, fingerprint, keyId, created, expires }
+ *   pgp_keyring      — Object: { "email@example.com": "-----BEGIN PGP PUBLIC KEY BLOCK-----..." }
+ *   pgp_org_override — Object: manual org config override (see org-config.js)
+ *
+ * Storage budget (approximate):
+ *   Private key (ECC/curve25519 + passphrase encryption): ~3–6 KB
+ *   Public key: ~0.5–1 KB
+ *   Metadata: <0.2 KB
+ *   Per contact public key: ~1–3 KB
+ *   ⇒ Comfortable room for ~8–10 contact keys before approaching the limit.
+ *   Use estimateStorageUsage() and STORAGE_LIMIT_BYTES to warn the user early.
  */
 
 const KEYS = {
@@ -27,6 +40,14 @@ function settings() {
   return Office.context.roamingSettings;
 }
 
+/**
+ * Persist all pending in-memory setting changes to the server.
+ *
+ * IMPORTANT: roamingSettings.set() only updates the in-memory copy.  Changes
+ * are lost if the task pane closes before saveAsync() completes.  Every public
+ * write function in this module awaits saveAsync() before resolving, so callers
+ * never need to call it themselves.
+ */
 function saveAsync() {
   return new Promise((resolve, reject) => {
     settings().saveAsync((result) => {

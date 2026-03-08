@@ -1,9 +1,33 @@
 'use strict';
+/**
+ * MessageCompose.js
+ * Task pane for encrypting outgoing messages.
+ *
+ * Flow:
+ *  1. On load, all To/CC recipients are resolved to their PGP public keys using
+ *     the key-discovery chain: local keyring → WKD → VKS (keys.openpgp.org).
+ *  2. For each recipient without a key the user can trigger a fresh search, or
+ *     paste an armored key directly.  Keys discovered from WKD/VKS can be saved
+ *     to the local keyring with one click.
+ *  3. The company key (if org config enables it) is fetched from WKD/VKS and
+ *     added to every encryption unconditionally (or optionally, per org policy).
+ *  4. Clicking "Encrypt Message":
+ *       a. Prompts for the passphrase (only if signing is enabled).
+ *       b. Assembles the full recipient list: all To/CC keys + own public key
+ *          (encrypt-to-self so the sender can read sent mail) + company key(s).
+ *       c. Encrypts the plain-text body and replaces it with PGP armor.
+ *       d. For each non-inline attachment: reads, encrypts to a .pgp file,
+ *          removes the original, and adds the encrypted version.
+ *  5. After encryption the Encrypt button is disabled so the message cannot be
+ *     double-encrypted.  The user then sends the message normally.
+ *
+ * Requires: Mailbox 1.8 (for getAttachmentContentAsync / addFileAttachmentFromBase64Async)
+ */
 
 import {
   unlockPrivateKey, readPublicKey, getKeyInfo,
   encryptMessage, encryptAttachment,
-  base64ToUint8Array, uint8ArrayToBase64,
+  base64ToUint8Array,
   detectPgpContent,
 } from './Scripts/pgp/pgp-core.js';
 import { hasKeyPair, getPrivateKey, getPublicKey } from './Scripts/pgp/key-storage.js';
@@ -114,8 +138,6 @@ function renderRecipientList() {
     li.dataset.idx = idx;
 
     const hasKey = !!r.key;
-    const fpHtml = r.key ? `` : ''; // fingerprint shown inline if needed
-
     let actionsHtml = '';
     if (!hasKey) {
       actionsHtml = `
@@ -279,13 +301,14 @@ async function handleEncrypt() {
   spinner.classList.remove('pgp-hidden');
 
   try {
-    // 1. Get passphrase and unlock private key (only if signing)
+    // 1. Unlock the private key — only needed when signing is enabled.
+    //    Encrypting to our own public key (step 2) does NOT require the
+    //    private key; the public key alone is sufficient for encryption.
     const shouldSign = el('sign-toggle').checked;
     const armoredPrivate = getPrivateKey();
     let signingKey = null;
 
-    if (shouldSign || true) {
-      // We always need to unlock the key since we encrypt to self too
+    if (shouldSign) {
       const passphrase = await promptPassphrase();
       signingKey = await unlockPrivateKey(armoredPrivate, passphrase);
     }
@@ -424,33 +447,40 @@ function addAttachmentFromBase64Async(item, base64, name, contentType) {
 
 // ── Delegate recipient list interactions ──────────────────────────────────────
 
+/**
+ * Wire a single delegated click handler on the recipient list container.
+ * Must be called exactly once after the container is in the DOM.
+ *
+ * Using event delegation means we can call renderRecipientList() to replace
+ * the inner HTML without needing to re-attach listeners — the handler always
+ * lives on the stable container element, not on individual buttons.
+ */
 function wireRecipientListEvents() {
   el('recipient-list').addEventListener('click', async (e) => {
     const idx = parseInt(e.target.closest('[data-idx]')?.dataset.idx ?? '-1');
     if (idx < 0) return;
 
-    // Retry key lookup
+    // Retry key lookup — re-runs the full WKD/VKS discovery chain
     if (e.target.classList.contains('btn-retry-key')) {
       e.target.disabled = true;
       e.target.textContent = '…';
       const result = await resolveRecipients([_recipientResults[idx].email]);
       _recipientResults[idx] = result[0];
-      renderRecipientList();
-      wireRecipientListEvents();
+      renderRecipientList(); // replaces innerHTML; delegation keeps the handler alive
       updateEncryptButton();
     }
 
-    // Show paste form
+    // Toggle the inline paste form for a recipient
     if (e.target.classList.contains('btn-paste-key')) {
       el(`recipient-paste-form-${idx}`).classList.toggle('pgp-hidden');
     }
 
-    // Cancel paste
+    // Cancel paste — hide the form
     if (e.target.classList.contains('btn-paste-key-cancel')) {
       el(`recipient-paste-form-${idx}`).classList.add('pgp-hidden');
     }
 
-    // Confirm pasted key
+    // Validate and accept a manually pasted armored public key
     if (e.target.classList.contains('btn-paste-key-confirm')) {
       const armoredKey = el(`recipient-paste-key-${idx}`).value.trim();
       if (!armoredKey) return;
@@ -461,14 +491,13 @@ function wireRecipientListEvents() {
         _recipientResults[idx].status = 'found_local';
         _recipientResults[idx].source = 'Pasted';
         renderRecipientList();
-        wireRecipientListEvents();
         updateEncryptButton();
       } catch (err) {
         alert(`Invalid PGP key: ${err.message}`);
       }
     }
 
-    // Save found key to keyring
+    // Persist a WKD/VKS-discovered key into the local keyring for future use
     if (e.target.classList.contains('btn-save-key')) {
       const r = _recipientResults[idx];
       if (r.armoredKey) {
@@ -476,7 +505,6 @@ function wireRecipientListEvents() {
           await addContactKey(r.email, r.armoredKey);
           showStatus(`Key for ${r.email} saved to your keyring.`, 'success');
           renderRecipientList();
-          wireRecipientListEvents();
         } catch (err) {
           showStatus(`Could not save key: ${err.message}`, 'error');
         }
@@ -510,10 +538,12 @@ Office.onReady(async () => {
   el('btn-refresh-recipients').addEventListener('click', async () => {
     _recipientResults = [];
     await loadRecipients();
-    wireRecipientListEvents();
+    // No need to call wireRecipientListEvents() again — it uses event
+    // delegation on the container, which survives innerHTML replacement.
   });
 
   el('btn-encrypt').addEventListener('click', handleEncrypt);
 
+  // Wire the delegated recipient list handler exactly once.
   wireRecipientListEvents();
 });

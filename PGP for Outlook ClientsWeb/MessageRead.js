@@ -12,10 +12,9 @@
 
 import * as openpgp from './Scripts/openpgp.min.mjs';
 import {
-  unlockPrivateKey, readPublicKey, getKeyInfo,
+  unlockPrivateKey,
   decryptMessage, decryptAttachment,
   detectPgpContent,
-  base64ToUint8Array, uint8ArrayToBase64,
 } from './Scripts/pgp/pgp-core.js';
 import { hasKeyPair, getPrivateKey } from './Scripts/pgp/key-storage.js';
 import { getContactKeyObject } from './Scripts/pgp/keyring.js';

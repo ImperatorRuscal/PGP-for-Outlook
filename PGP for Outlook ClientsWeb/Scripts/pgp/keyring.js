@@ -2,6 +2,18 @@
  * keyring.js
  * Manages the local keyring — the collection of trusted contacts' public keys
  * stored in Office roaming settings.
+ *
+ * The keyring is stored as a single JSON object keyed by normalised email
+ * address (lowercase).  This keeps the storage format simple and human-readable
+ * if you ever inspect the raw roaming settings.
+ *
+ * Keys stored here are considered trusted by the user (they either came from
+ * WKD/VKS and the user chose to save them, or they were pasted in manually).
+ * There is currently no trust-level concept (full / marginal / none) — all
+ * stored keys are treated as fully trusted for encryption and signature
+ * verification purposes.  If you need a web-of-trust model in the future,
+ * extend the stored value from a plain armored string to an object with
+ * { armoredKey, trustLevel, addedAt } fields.
  */
 
 import { getKeyring, saveKeyring, estimateStorageUsage, STORAGE_LIMIT_BYTES } from './key-storage.js';
@@ -28,6 +40,8 @@ export async function addContactKey(email, armoredKey) {
   }
 
   const keyring = getKeyring();
+  // Email addresses are stored lowercase to prevent duplicate entries for
+  // "Alice@Example.com" vs "alice@example.com".
   keyring[email.toLowerCase()] = armoredKey;
   await saveKeyring(keyring);
 

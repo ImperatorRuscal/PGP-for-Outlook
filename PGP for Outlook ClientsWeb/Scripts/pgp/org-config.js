@@ -29,8 +29,10 @@ const DEFAULT_CONFIG = Object.freeze({
   companyKeyEmails:   [],
 });
 
+// Config and company keys are cached for the lifetime of the task pane session.
+// Call clearOrgConfigCache() after changing the override to force a reload.
 let _cachedConfig     = null;
-let _cachedCompanyKeys = null; // [{ email, key }]
+let _cachedCompanyKeys = null; // [{ email, key: openpgp.Key }]
 
 // ── Config loading ────────────────────────────────────────────────────────────
 
@@ -55,8 +57,11 @@ export async function loadOrgConfig(userEmail) {
     if (domain) {
       const url = `https://${domain}/.well-known/pgp-outlook-config.json`;
       const response = await fetch(url, {
+        // Fail fast — if the file doesn't exist we fall through to defaults
+        // rather than leaving the user waiting for a network timeout.
         signal: AbortSignal.timeout(5000),
-        // No credentials — this file is public by design
+        // No credentials — this file is intentionally public.  Never add
+        // 'include' here; that would send the user's cookies to the domain.
       });
       if (response.ok) {
         const json = await response.json();

@@ -1,4 +1,31 @@
 'use strict';
+/**
+ * KeyManagement.js
+ * Task pane for managing the user's PGP identity and keyring.
+ *
+ * Sections:
+ *
+ *  MY KEY PAIR
+ *    Generate a new Ed25519/X25519 key pair protected by a passphrase.
+ *    The passphrase-encrypted private key and the public key are stored in
+ *    Office roaming settings — they follow the user across devices via their
+ *    Microsoft 365 account, but never leave the Office ecosystem unencrypted.
+ *    The user can copy or email their public key to contacts, and can delete
+ *    or regenerate the key pair at any time.
+ *
+ *  CONTACTS' KEYRING
+ *    A local store of trusted contacts' public keys, also in roaming settings.
+ *    Keys can be added by searching (WKD → VKS auto-discovery) or by pasting
+ *    armored text directly.  A storage-usage warning appears when the 32 KB
+ *    roaming settings ceiling is within 20% of being reached.
+ *
+ *  ORGANISATION SETTINGS
+ *    The add-in tries to load org-level config from:
+ *      https://<user-email-domain>/.well-known/pgp-outlook-config.json
+ *    IT admins can enable/configure the company key feature by publishing that
+ *    file.  A manual override (stored in roaming settings) takes precedence
+ *    and is intended for orgs that cannot host a well-known file.
+ */
 
 import { generateKeyPair, getKeyInfo } from './Scripts/pgp/pgp-core.js';
 import {
@@ -139,17 +166,20 @@ function handleSendPublicKey() {
   const meta = getKeyMetadata();
   if (!armoredKey || !meta) return;
 
-  const subject = encodeURIComponent(`PGP Public Key for ${meta.name}`);
-  const body = encodeURIComponent(
-    `Hi,\n\nPlease find my PGP public key below. You can use this to send me encrypted messages.\n\n` +
-    `Fingerprint: ${meta.fingerprintFormatted || meta.fingerprint}\n\n${armoredKey}`
-  );
-
-  // Open a new compose window via the Office API
+  // displayNewMessageForm opens a new compose window pre-filled with the
+  // public key.  The recipient is left blank so the user can address it.
+  // The armored key is wrapped in <pre> to preserve its line structure in
+  // the HTML body; the recipient can copy it out and import it in any
+  // OpenPGP-compatible client.
   Office.context.mailbox.displayNewMessageForm({
     toRecipients: [],
-    subject: decodeURIComponent(subject),
-    htmlBody: `<pre>${armoredKey}</pre>`,
+    subject: `PGP Public Key for ${meta.name}`,
+    htmlBody:
+      `<p>Hi,</p>` +
+      `<p>Please find my PGP public key below. ` +
+      `You can use this to send me encrypted messages.</p>` +
+      `<p><strong>Fingerprint:</strong> ${meta.fingerprintFormatted || meta.fingerprint}</p>` +
+      `<pre>${armoredKey}</pre>`,
   });
 }
 
