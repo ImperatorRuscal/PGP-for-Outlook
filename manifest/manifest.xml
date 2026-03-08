@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+  xsi:type="MailApp">
+
+  <!-- ═══════════════════════════════════════════════════════════
+       Basic Settings — displayed in Microsoft 365 admin centre
+  ════════════════════════════════════════════════════════════ -->
+
+  <!-- IMPORTANT: Replace with a new GUID for production deployments -->
+  <Id>e1c8eb63-8194-4f6e-ae2e-5588bf7697fc</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Acme Widget Co.</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="PGP Encryption" />
+  <Description DefaultValue="PGP message encryption, decryption and key management for Outlook." />
+  <IconUrl DefaultValue="~remoteAppUrl/images/Icon64.png" />
+  <HighResolutionIconUrl DefaultValue="~remoteAppUrl/images/Icon80.png" />
+  <SupportUrl DefaultValue="https://github.com/ImperatorRuscal/TEST_PGP-for-Outlook" />
+
+  <AppDomains>
+    <!-- Domains the add-in is allowed to navigate to.
+         Add your key-server / WKD domains if navigation is required. -->
+    <AppDomain>https://keys.openpgp.org</AppDomain>
+  </AppDomains>
+
+  <!-- Legacy host declaration (required by schema) -->
+  <Hosts>
+    <Host Name="Mailbox" />
+  </Hosts>
+
+  <!-- Minimum legacy requirement set -->
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1" />
+    </Sets>
+  </Requirements>
+
+  <!-- Legacy form settings — fallback for very old clients -->
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="~remoteAppUrl/MessageRead.html" />
+        <RequestedHeight>300</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteItem</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" />
+  </Rule>
+
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       Version Overrides — modern Outlook ribbon integration
+       Requires Mailbox 1.8 for compose attachment access.
+  ════════════════════════════════════════════════════════════ -->
+  <VersionOverrides
+    xmlns="http://schemas.microsoft.com/office/mailappversionoverrides"
+    xsi:type="VersionOverridesV1_0">
+
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.8">
+        <bt:Set Name="Mailbox" />
+      </bt:Sets>
+    </Requirements>
+
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+
+          <!-- FunctionFile: hosts UI-less ExecuteFunction actions -->
+          <FunctionFile resid="functionFile" />
+
+          <!-- ─────────────────────────────────────────────────
+               MESSAGE READ — decrypt + key management buttons
+          ────────────────────────────────────────────────── -->
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="msgReadGroup">
+                <Label resid="groupLabel" />
+
+                <!-- Decrypt / View button -->
+                <Control xsi:type="Button" id="msgReadDecryptButton">
+                  <Label resid="readDecryptButtonLabel" />
+                  <Supertip>
+                    <Title resid="readDecryptSuperTipTitle" />
+                    <Description resid="readDecryptSuperTipDescription" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon32" />
+                    <bt:Image size="80" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="messageReadTaskPaneUrl" />
+                  </Action>
+                </Control>
+
+                <!-- Manage Keys button -->
+                <Control xsi:type="Button" id="msgReadKeysButton">
+                  <Label resid="manageKeysButtonLabel" />
+                  <Supertip>
+                    <Title resid="manageKeysSuperTipTitle" />
+                    <Description resid="manageKeysSuperTipDescription" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon32" />
+                    <bt:Image size="80" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="keyManagementTaskPaneUrl" />
+                  </Action>
+                </Control>
+
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+          <!-- ─────────────────────────────────────────────────
+               MESSAGE COMPOSE — encrypt + key management buttons
+          ────────────────────────────────────────────────── -->
+          <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="msgComposeGroup">
+                <Label resid="groupLabel" />
+
+                <!-- Encrypt button -->
+                <Control xsi:type="Button" id="msgComposeEncryptButton">
+                  <Label resid="composeEncryptButtonLabel" />
+                  <Supertip>
+                    <Title resid="composeEncryptSuperTipTitle" />
+                    <Description resid="composeEncryptSuperTipDescription" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon32" />
+                    <bt:Image size="80" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="messageComposeTaskPaneUrl" />
+                  </Action>
+                </Control>
+
+                <!-- Manage Keys button -->
+                <Control xsi:type="Button" id="msgComposeKeysButton">
+                  <Label resid="manageKeysButtonLabel" />
+                  <Supertip>
+                    <Title resid="manageKeysSuperTipTitle" />
+                    <Description resid="manageKeysSuperTipDescription" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon32" />
+                    <bt:Image size="80" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="keyManagementTaskPaneUrl" />
+                  </Action>
+                </Control>
+
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <!-- ═══════════════════════════════════════════════════════
+         Resource strings and URLs
+    ════════════════════════════════════════════════════════ -->
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="~remoteAppUrl/images/Icon16.png" />
+        <bt:Image id="icon32" DefaultValue="~remoteAppUrl/images/Icon32.png" />
+        <bt:Image id="icon80" DefaultValue="~remoteAppUrl/images/Icon80.png" />
+      </bt:Images>
+
+      <bt:Urls>
+        <bt:Url id="functionFile"             DefaultValue="~remoteAppUrl/Functions/FunctionFile.html" />
+        <bt:Url id="messageReadTaskPaneUrl"   DefaultValue="~remoteAppUrl/MessageRead.html" />
+        <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="~remoteAppUrl/MessageCompose.html" />
+        <bt:Url id="keyManagementTaskPaneUrl" DefaultValue="~remoteAppUrl/KeyManagement.html" />
+      </bt:Urls>
+
+      <bt:ShortStrings>
+        <!-- Group label -->
+        <bt:String id="groupLabel"                  DefaultValue="PGP Encryption" />
+
+        <!-- Read pane buttons -->
+        <bt:String id="readDecryptButtonLabel"      DefaultValue="Decrypt" />
+        <bt:String id="readDecryptSuperTipTitle"    DefaultValue="Decrypt PGP Message" />
+
+        <!-- Compose pane buttons -->
+        <bt:String id="composeEncryptButtonLabel"   DefaultValue="Encrypt" />
+        <bt:String id="composeEncryptSuperTipTitle" DefaultValue="Encrypt PGP Message" />
+
+        <!-- Shared key management button -->
+        <bt:String id="manageKeysButtonLabel"       DefaultValue="Manage Keys" />
+        <bt:String id="manageKeysSuperTipTitle"     DefaultValue="PGP Key Management" />
+      </bt:ShortStrings>
+
+      <bt:LongStrings>
+        <bt:String id="readDecryptSuperTipDescription"
+          DefaultValue="Open the PGP decryption pane to decrypt this message and verify its signature." />
+        <bt:String id="composeEncryptSuperTipDescription"
+          DefaultValue="Open the PGP encryption pane to encrypt this message before sending." />
+        <bt:String id="manageKeysSuperTipDescription"
+          DefaultValue="Generate or import PGP keys, manage your keyring, and configure organisation settings." />
+      </bt:LongStrings>
+    </Resources>
+
+  </VersionOverrides>
+</OfficeApp>

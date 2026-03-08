@@ -56,13 +56,13 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v4
 
-      # The web app lives in "PGP for Outlook ClientsWeb/".
+      # The web app lives in "web/".
       # We upload that directory as the Pages artifact so its contents
       # appear at the root of the Pages URL (no subdirectory prefix needed).
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "PGP for Outlook ClientsWeb"
+          path: "web"
 
       - name: Deploy to GitHub Pages
         id: deployment
