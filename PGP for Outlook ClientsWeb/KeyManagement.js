@@ -183,6 +183,42 @@ function handleSendPublicKey() {
   });
 }
 
+/**
+ * Download the user's passphrase-encrypted private key as a .asc file.
+ *
+ * The exported file is the same armored text stored in roaming settings —
+ * it is already encrypted with the user's passphrase (AES-256 via OpenPGP
+ * S2K), so it is safe to store on disk, in cloud storage, etc.  It cannot
+ * be decrypted or used without the passphrase.
+ *
+ * The suggested filename includes the key's short fingerprint ID so the user
+ * can tell multiple backups apart, e.g. "pgp-private-key-ABCD1234.asc".
+ */
+function handleExportPrivateKey() {
+  const armoredPrivate = getPrivateKey();
+  if (!armoredPrivate) return;
+
+  const meta     = getKeyMetadata();
+  const shortId  = meta?.fingerprint?.slice(-8) || 'key';
+  const filename = `pgp-private-key-${shortId}.asc`;
+
+  const blob = new Blob([armoredPrivate], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  showStatus('status-bar',
+    `Private key backup downloaded as "${filename}". ` +
+    'Keep this file secure — it is protected by your passphrase.',
+    'warning'
+  );
+}
+
 async function handleDeleteKey() {
   if (!confirm('Are you sure you want to delete your key pair? This cannot be undone. You will need to generate a new key pair and share your new public key with all your contacts.')) return;
   await clearKeyPair();
@@ -393,6 +429,7 @@ Office.onReady(async () => {
 
   el('btn-copy-pubkey')?.addEventListener('click', handleCopyPublicKey);
   el('btn-send-pubkey')?.addEventListener('click', handleSendPublicKey);
+  el('btn-export-key')?.addEventListener('click', handleExportPrivateKey);
   el('btn-delete-key')?.addEventListener('click', handleDeleteKey);
 
   // Keyring

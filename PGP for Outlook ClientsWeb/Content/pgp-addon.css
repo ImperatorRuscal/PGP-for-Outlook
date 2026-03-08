@@ -452,3 +452,42 @@ html, body {
 
 .pgp-mt-sm { margin-top: 6px; }
 .pgp-mt-md { margin-top: 12px; }
+
+/* ── Session status bar ───────────────────────────────────── */
+/*
+ * Shown when the user's private key is unlocked and cached in memory.
+ * Styled as a subtle success-tinted strip with a "Lock" button on the right.
+ */
+.pgp-session-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #dff6dd;
+  border-left: 3px solid #107c10;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #107c10;
+  font-weight: 500;
+}
+
+/* ── Decrypted HTML iframe wrapper ────────────────────────── */
+/*
+ * The iframe holds HTML decrypted content and is sandboxed to prevent
+ * script execution.  The wrapper gives it a visible container with a
+ * subtle background to distinguish it from the surrounding UI.
+ */
+.pgp-decrypted-html-wrapper {
+  border: 1px solid #edebe9;
+  border-radius: 3px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.pgp-decrypted-html-wrapper iframe {
+  display: block;
+  width: 100%;
+  border: none;
+  min-height: 200px;
+}

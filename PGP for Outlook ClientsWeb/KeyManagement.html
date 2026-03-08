@@ -48,9 +48,15 @@
       <div class="pgp-row pgp-mt-md" style="flex-wrap:wrap;gap:6px;">
         <button class="pgp-btn pgp-btn--secondary" id="btn-copy-pubkey">Copy Public Key</button>
         <button class="pgp-btn pgp-btn--secondary" id="btn-send-pubkey">Send via Email</button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-export-key">Download Backup</button>
         <button class="pgp-btn pgp-btn--secondary" id="btn-show-generate">Regenerate Key</button>
         <button class="pgp-btn pgp-btn--danger"    id="btn-delete-key">Delete Key</button>
       </div>
+      <p style="font-size:11px;color:#605e5c;margin:6px 0 0;">
+        <strong>Download Backup</strong> saves your passphrase-protected private key as
+        a <code>.asc</code> file. Keep this file secure — it cannot be decrypted without
+        your passphrase.
+      </p>
     </div>
 
     <!-- Generate form (hidden until triggered) -->

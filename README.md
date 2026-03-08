@@ -157,31 +157,78 @@ email; metadata encryption requires a different transport layer entirely).
 
 ### 1. Host the web app
 
-The `PGP for Outlook ClientsWeb/` folder is a static web app.  Host it on any
-HTTPS-enabled server:
+The `PGP for Outlook ClientsWeb/` folder is a static web app — no server-side
+code, no database.  Host it on any HTTPS-enabled server.
 
-- **Azure Static Web Apps** — drag and drop to deploy, free tier available
-- **IIS / Apache / Nginx** — copy the folder to a virtual directory
-- **GitHub Pages** — free for public repos
-- **SharePoint** — host as a SharePoint App Page
+---
 
-> HTTPS is **required**.  Office add-ins will not load over plain HTTP.
+#### Option A: GitHub Pages (recommended — no infrastructure needed)
+
+This repository includes a ready-to-use GitHub Actions workflow
+(`.github/workflows/deploy-pages.yml`) that publishes the add-in automatically
+on every push to `main`/`master`.
+
+**One-time setup:**
+
+1. Push the repository to GitHub (public or private — Pages works for both).
+2. Go to your repository's **Settings → Pages**.
+3. Under *Build and deployment*, select **GitHub Actions** as the source.
+4. Push any commit to `main`; the workflow runs and your Pages URL appears in
+   the Settings → Pages panel, e.g.:
+   ```
+   https://<your-org-or-username>.github.io/<repo-name>/
+   ```
+5. Update the manifest (see step 2 below) with that URL.
+
+> **HTTPS is automatic** — GitHub Pages always serves over HTTPS.
+
+---
+
+#### Option B: Azure Static Web Apps
+
+Drag and drop the `PGP for Outlook ClientsWeb/` folder into the Azure portal,
+or connect it to the repository for automatic deployment.  Free tier available.
+
+#### Option C: SharePoint
+
+Host the folder as a SharePoint App Page.  Useful for organisations that want
+the add-in files inside their Microsoft 365 tenant.
+
+#### Option D: IIS / Apache / Nginx
+
+Copy the folder to a virtual directory configured for HTTPS.
+
+> HTTPS is **required** in all cases.  Office add-ins will not load over plain HTTP.
+
+---
 
 ### 2. Update the manifest
 
 Open `PGP for Outlook Clients.xml` and replace every `~remoteAppUrl` with
-your hosting URL:
+your hosting URL (the GitHub Pages URL, or whatever you chose in step 1).
+Do **not** include a trailing slash:
 
 ```xml
+<!-- Replace ~remoteAppUrl throughout the manifest, e.g.: -->
 <bt:Url id="messageReadTaskPaneUrl"
-        DefaultValue="https://your-server.example.com/MessageRead.html"/>
+        DefaultValue="https://your-org.github.io/your-repo/MessageRead.html"/>
 ```
 
-Also replace the `<Id>` GUID with a freshly generated one:
+A quick way to do all substitutions at once (Linux / macOS):
+
+```bash
+sed -i 's|~remoteAppUrl|https://your-org.github.io/your-repo|g' \
+    "PGP for Outlook Clients/PGP for Outlook ClientsManifest/PGP for Outlook Clients.xml"
+```
+
+Also replace the `<Id>` GUID with a freshly generated one so the manifest has
+a unique identity in your tenant:
 
 ```xml
 <Id>YOUR-NEW-GUID-HERE</Id>
 ```
+
+Generate a GUID with `uuidgen` (Linux/macOS) or PowerShell's `[guid]::NewGuid()`.
 
 ### 3. Deploy the manifest
 

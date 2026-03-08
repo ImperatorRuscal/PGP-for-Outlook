@@ -19,6 +19,10 @@ import {
 import { hasKeyPair, getPrivateKey } from './Scripts/pgp/key-storage.js';
 import { getContactKeyObject } from './Scripts/pgp/keyring.js';
 import { discoverKey, KeyStatus } from './Scripts/pgp/key-discovery.js';
+import {
+  cacheSessionKey, getSessionKey, clearSessionKey,
+  getSessionEmail, getSessionShortId, onSessionCleared,
+} from './Scripts/pgp/session-cache.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -40,6 +44,21 @@ function showStatus(message, type = 'info') {
   bar.className = `pgp-alert pgp-alert--${type}`;
   bar.innerHTML = message;
   bar.classList.remove('pgp-hidden');
+}
+
+// ── Session status ────────────────────────────────────────────────────────────
+
+function updateSessionStatus() {
+  const bar   = el('session-status');
+  const label = el('session-status-text');
+  const email   = getSessionEmail();
+  const shortId = getSessionShortId();
+  if (email) {
+    label.textContent = `Key unlocked: ${email}${shortId ? ' · …' + shortId : ''}`;
+    bar.classList.remove('pgp-hidden');
+  } else {
+    bar.classList.add('pgp-hidden');
+  }
 }
 
 // ── Passphrase modal ──────────────────────────────────────────────────────────
@@ -150,8 +169,19 @@ async function handleDecryptBody(encryptedBody) {
   spinner.classList.remove('pgp-hidden');
 
   try {
-    const passphrase = await promptPassphrase('Enter your passphrase to decrypt this message.');
-    const privateKey = await unlockPrivateKey(getPrivateKey(), passphrase);
+    // Check the session cache before prompting — avoids repeated passphrase
+    // entry when the user decrypts several messages or attachments in one session.
+    let privateKey = getSessionKey();
+
+    if (!privateKey) {
+      const passphrase = await promptPassphrase('Enter your passphrase to decrypt this message.');
+      privateKey = await unlockPrivateKey(getPrivateKey(), passphrase);
+
+      // Cache for 15 minutes of inactivity.
+      const userEmail = Office.context.mailbox.userProfile?.emailAddress || '';
+      cacheSessionKey(privateKey, userEmail, '');
+      updateSessionStatus();
+    }
 
     // Attempt to get the sender's public key for signature verification
     const senderEmail = Office.context.mailbox.item.from?.emailAddress;
@@ -199,7 +229,32 @@ function renderDecryptedBody(text, signatureResult, senderEmail) {
     sigDetails.classList.remove('pgp-hidden');
   }
 
-  el('decrypted-body').textContent = text;
+  // Detect whether the decrypted payload is HTML (messages encrypted by this
+  // add-in always are, since we encrypt CoercionType.Html).  Fall back to
+  // plain-text rendering for messages encrypted by third-party clients.
+  const trimmed = text.trimStart();
+  const isHtml  = trimmed.startsWith('<!DOCTYPE') ||
+                  trimmed.startsWith('<html')     ||
+                  trimmed.startsWith('<HTML');
+
+  if (isHtml) {
+    // Render in a sandboxed iframe.  'allow-same-origin' lets the iframe read
+    // its srcdoc content but scripts are NOT allowed (no 'allow-scripts').
+    // This prevents any JavaScript inside the decrypted HTML from running.
+    const frame = el('decrypted-html-frame');
+    frame.srcdoc = text;
+    el('decrypted-html-wrapper').classList.remove('pgp-hidden');
+
+    // Resize iframe to fit content once it loads
+    frame.addEventListener('load', () => {
+      try {
+        frame.style.height = frame.contentDocument.body.scrollHeight + 32 + 'px';
+      } catch { /* cross-origin guard — shouldn't fire with srcdoc + allow-same-origin */ }
+    }, { once: true });
+  } else {
+    el('decrypted-body').textContent = text;
+    el('decrypted-body').classList.remove('pgp-hidden');
+  }
 
   el('btn-copy-decrypted').addEventListener('click', async () => {
     try {
@@ -314,8 +369,14 @@ function renderPgpAttachments() {
     const attachmentName = btn.dataset.name;
 
     try {
-      const passphrase = await promptPassphrase(`Enter your passphrase to decrypt ${attachmentName}.`);
-      const privateKey = await unlockPrivateKey(getPrivateKey(), passphrase);
+      let privateKey = getSessionKey();
+      if (!privateKey) {
+        const passphrase = await promptPassphrase(`Enter your passphrase to decrypt ${attachmentName}.`);
+        privateKey = await unlockPrivateKey(getPrivateKey(), passphrase);
+        const userEmail = Office.context.mailbox.userProfile?.emailAddress || '';
+        cacheSessionKey(privateKey, userEmail, '');
+        updateSessionStatus();
+      }
 
       const contentResult = await getAttachmentContentAsync(item, attachmentId);
       const armoredMessage = atob(contentResult.content);
@@ -379,6 +440,14 @@ Office.onReady(async () => {
     el('detection-result').classList.remove('pgp-hidden');
     return;
   }
+
+  // Reflect current session cache state and keep it in sync
+  updateSessionStatus();
+  onSessionCleared(updateSessionStatus);
+
+  el('btn-lock-session').addEventListener('click', () => {
+    clearSessionKey(); // triggers onSessionCleared → updateSessionStatus
+  });
 
   await detectAndRenderBody();
 });

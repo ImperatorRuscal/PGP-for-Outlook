@@ -16,6 +16,12 @@
   <!-- ── Global status ──────────────────────────────────── -->
   <div id="status-bar" class="pgp-hidden"></div>
 
+  <!-- ── Session key status ─────────────────────────────── -->
+  <div id="session-status" class="pgp-session-status pgp-hidden">
+    <span id="session-status-text"></span>
+    <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-lock-session">Lock</button>
+  </div>
+
   <!-- ── No key warning ─────────────────────────────────── -->
   <div id="panel-no-key" class="pgp-alert pgp-alert--error pgp-hidden">
     You don't have a PGP key pair. Open <strong>Manage Keys</strong> to generate one before encrypting messages.

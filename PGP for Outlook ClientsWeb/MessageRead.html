@@ -16,6 +16,12 @@
   <!-- ── Global status ──────────────────────────────────── -->
   <div id="status-bar" class="pgp-hidden"></div>
 
+  <!-- ── Session key status ─────────────────────────────── -->
+  <div id="session-status" class="pgp-session-status pgp-hidden">
+    <span id="session-status-text"></span>
+    <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-lock-session">Lock</button>
+  </div>
+
   <!-- ── No key warning ─────────────────────────────────── -->
   <div id="panel-no-key" class="pgp-alert pgp-alert--error pgp-hidden">
     You don't have a PGP key pair. Open <strong>Manage Keys</strong> to generate one.
@@ -55,7 +61,16 @@
       <div id="signature-badge"></div>
     </div>
     <div id="signature-details" class="pgp-hidden" style="font-size:11px;color:#605e5c;margin-bottom:8px;"></div>
-    <div class="pgp-decrypted-body" id="decrypted-body"></div>
+    <!-- Plain-text decrypted content (shown when payload is not HTML) -->
+    <div class="pgp-decrypted-body pgp-hidden" id="decrypted-body"></div>
+    <!-- HTML decrypted content — sandboxed iframe prevents script execution -->
+    <div class="pgp-decrypted-html-wrapper pgp-hidden" id="decrypted-html-wrapper">
+      <iframe id="decrypted-html-frame"
+        sandbox="allow-same-origin"
+        referrerpolicy="no-referrer"
+        style="width:100%;border:none;min-height:200px;"
+        title="Decrypted message content"></iframe>
+    </div>
     <button class="pgp-btn pgp-btn--secondary pgp-btn--sm pgp-mt-sm" id="btn-copy-decrypted">
       Copy to Clipboard
     </button>

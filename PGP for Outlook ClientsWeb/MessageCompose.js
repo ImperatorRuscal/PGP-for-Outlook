@@ -12,10 +12,14 @@
  *  3. The company key (if org config enables it) is fetched from WKD/VKS and
  *     added to every encryption unconditionally (or optionally, per org policy).
  *  4. Clicking "Encrypt Message":
- *       a. Prompts for the passphrase (only if signing is enabled).
+ *       a. If signing is enabled, checks the session cache for an already-
+ *          unlocked key.  If none, prompts for the passphrase, unlocks, and
+ *          caches it for 15 minutes of inactivity.
  *       b. Assembles the full recipient list: all To/CC keys + own public key
  *          (encrypt-to-self so the sender can read sent mail) + company key(s).
- *       c. Encrypts the plain-text body and replaces it with PGP armor.
+ *       c. Gets the message body as HTML (preserving all formatting), encrypts
+ *          the HTML string, then replaces the body with the plain-text PGP armor.
+ *          When the recipient decrypts, they recover the original HTML exactly.
  *       d. For each non-inline attachment: reads, encrypts to a .pgp file,
  *          removes the original, and adds the encrypted version.
  *  5. After encryption the Encrypt button is disabled so the message cannot be
@@ -31,12 +35,38 @@ import {
   detectPgpContent,
 } from './Scripts/pgp/pgp-core.js';
 import { hasKeyPair, getPrivateKey, getPublicKey } from './Scripts/pgp/key-storage.js';
+import {
+  cacheSessionKey, getSessionKey, clearSessionKey,
+  getSessionEmail, getSessionShortId, onSessionCleared,
+} from './Scripts/pgp/session-cache.js';
 import { addContactKey } from './Scripts/pgp/keyring.js';
 import { resolveRecipients, KeyStatus } from './Scripts/pgp/key-discovery.js';
 import {
   loadOrgConfig, isCompanyKeyEnabled, isCompanyKeyRequired,
   getCompanyKeyEmails, fetchCompanyKeys,
 } from './Scripts/pgp/org-config.js';
+
+// ── Session status ────────────────────────────────────────────────────────────
+
+/**
+ * Refresh the session status bar that shows whether an unlocked private key is
+ * currently cached.  Called on load, after caching a new key, and whenever the
+ * cache is cleared (via the onSessionCleared callback registered in onReady).
+ */
+function updateSessionStatus() {
+  const bar   = el('session-status');
+  const label = el('session-status-text');
+
+  const email   = getSessionEmail();
+  const shortId = getSessionShortId();
+
+  if (email) {
+    label.textContent = `Key unlocked: ${email}${shortId ? ' ·  …' + shortId : ''}`;
+    bar.classList.remove('pgp-hidden');
+  } else {
+    bar.classList.add('pgp-hidden');
+  }
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -305,12 +335,24 @@ async function handleEncrypt() {
     //    Encrypting to our own public key (step 2) does NOT require the
     //    private key; the public key alone is sufficient for encryption.
     const shouldSign = el('sign-toggle').checked;
-    const armoredPrivate = getPrivateKey();
     let signingKey = null;
 
     if (shouldSign) {
-      const passphrase = await promptPassphrase();
-      signingKey = await unlockPrivateKey(armoredPrivate, passphrase);
+      // Check the session cache before prompting — the user may have already
+      // entered their passphrase during this task pane session.
+      signingKey = getSessionKey();
+
+      if (!signingKey) {
+        const passphrase = await promptPassphrase();
+        signingKey = await unlockPrivateKey(getPrivateKey(), passphrase);
+
+        // Cache the unlocked key for the remainder of the session (15-minute
+        // inactivity timeout; cleared automatically when the pane is closed).
+        const userEmail = Office.context.mailbox.userProfile?.emailAddress || '';
+        const keyInfo   = await getKeyInfo(getPublicKey());
+        cacheSessionKey(signingKey, userEmail, keyInfo.shortId);
+        updateSessionStatus();
+      }
     }
 
     // 2. Collect all encryption keys
@@ -325,20 +367,26 @@ async function handleEncrypt() {
 
     const allEncryptionKeys = [ownPublicKey, ...recipientKeys, ...companyKeyObjects];
 
-    // 3. Get and encrypt the message body
+    // 3. Get the message body as HTML so that all formatting, inline images, and
+    //    rich-text markup are preserved exactly.  We encrypt the raw HTML string
+    //    as the PGP payload.  The recipient's decrypt pane will detect that the
+    //    decrypted content is HTML and render it in a sandboxed <iframe>.
     showStatus('Encrypting message body…', 'info');
-    const bodyText = await getBodyAsync();
+    const bodyHtml = await getBodyAsync(Office.CoercionType.Html);
 
-    // Check if it's already encrypted
-    if (detectPgpContent(bodyText) === 'encrypted') {
+    // Refuse to double-encrypt.  When the body is HTML the PGP armor block will
+    // appear as literal text inside the <body> element if already encrypted.
+    if (detectPgpContent(bodyHtml) === 'encrypted') {
       showStatus('Message appears to already be PGP-encrypted.', 'warning');
       btn.disabled = false;
       spinner.classList.add('pgp-hidden');
       return;
     }
 
-    const encryptedBody = await encryptMessage(bodyText, allEncryptionKeys, signingKey);
+    const encryptedBody = await encryptMessage(bodyHtml, allEncryptionKeys, signingKey);
 
+    // The outer body is plain-text PGP armor — recipients without the add-in
+    // will see the raw armor; those with it will decrypt and render the HTML.
     await setBodyAsync(encryptedBody);
 
     // 4. Encrypt attachments
@@ -364,10 +412,10 @@ async function handleEncrypt() {
   }
 }
 
-function getBodyAsync() {
+function getBodyAsync(coercionType = Office.CoercionType.Text) {
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.getAsync(
-      Office.CoercionType.Text,
+      coercionType,
       (result) => {
         if (result.status === Office.AsyncResultStatus.Succeeded) resolve(result.value);
         else reject(new Error(result.error.message));
@@ -534,6 +582,13 @@ Office.onReady(async () => {
   ]);
   loadAttachments();
 
+  // Reflect initial session cache state (user may have just come from KeyManagement)
+  updateSessionStatus();
+
+  // Keep the session status bar in sync whenever the cache is cleared (timeout
+  // or the user clicking Lock).  onSessionCleared fires for both.
+  onSessionCleared(updateSessionStatus);
+
   // Wire events
   el('btn-refresh-recipients').addEventListener('click', async () => {
     _recipientResults = [];
@@ -543,6 +598,10 @@ Office.onReady(async () => {
   });
 
   el('btn-encrypt').addEventListener('click', handleEncrypt);
+
+  el('btn-lock-session').addEventListener('click', () => {
+    clearSessionKey(); // triggers onSessionCleared → updateSessionStatus
+  });
 
   // Wire the delegated recipient list handler exactly once.
   wireRecipientListEvents();
