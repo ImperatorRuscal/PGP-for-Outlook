@@ -11,7 +11,7 @@
   ================================================================ -->
 
   <Id>4086c384-c2b3-4932-9b97-2b4d14c4821a</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.0.1</Version>
   <ProviderName>ImperatorRuscal</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="PGP Encryption" />
@@ -105,9 +105,9 @@
                     <Description resid="readDecryptSuperTipDescription" />
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="icon16" />
-                    <bt:Image size="32" resid="icon32" />
-                    <bt:Image size="80" resid="icon80" />
+                    <bt:Image size="16" resid="iconDecrypt16" />
+                    <bt:Image size="32" resid="iconDecrypt32" />
+                    <bt:Image size="80" resid="iconDecrypt80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <SourceLocation resid="messageReadTaskPaneUrl" />
@@ -151,9 +151,9 @@
                     <Description resid="compEncryptSuperTipDescription" />
                   </Supertip>
                   <Icon>
-                    <bt:Image size="16" resid="icon16" />
-                    <bt:Image size="32" resid="icon32" />
-                    <bt:Image size="80" resid="icon80" />
+                    <bt:Image size="16" resid="iconEncrypt16" />
+                    <bt:Image size="32" resid="iconEncrypt32" />
+                    <bt:Image size="80" resid="iconEncrypt80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <SourceLocation resid="messageComposeTaskPaneUrl" />
@@ -190,9 +190,18 @@
     ================================================================ -->
     <Resources>
       <bt:Images>
+        <!-- General / Manage Keys – blue closed padlock -->
         <bt:Image id="icon16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" />
         <bt:Image id="icon32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" />
         <bt:Image id="icon80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" />
+        <!-- Decrypt – red open padlock -->
+        <bt:Image id="iconDecrypt16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt16.png" />
+        <bt:Image id="iconDecrypt32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt32.png" />
+        <bt:Image id="iconDecrypt80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt80.png" />
+        <!-- Encrypt – green closed padlock -->
+        <bt:Image id="iconEncrypt16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt16.png" />
+        <bt:Image id="iconEncrypt32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt32.png" />
+        <bt:Image id="iconEncrypt80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt80.png" />
       </bt:Images>
 
       <bt:Urls>

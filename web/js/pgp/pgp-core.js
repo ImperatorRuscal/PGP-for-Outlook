@@ -25,6 +25,33 @@
 
 import * as openpgp from '../openpgp.min.mjs';
 
+// ── Internal helpers for legacy-key interoperability ──────────────────────────
+
+/**
+ * Returns true when the error is the OpenPGP.js "too weak" rejection thrown
+ * by key.getEncryptionKey() when the key uses an algorithm listed in
+ * config.rejectPublicKeyAlgorithms (e.g. ElGamal, DSA).
+ */
+function _isWeakKeyError(err) {
+  const msg = err?.message ?? '';
+  return msg.includes('too weak') ||
+         msg.includes('Could not find valid encryption key');
+}
+
+/**
+ * Build a one-off OpenPGP.js config that removes ElGamal (RFC 4880 algo 16)
+ * from the rejection list so we can encrypt to legacy DSA+ElGamal keys.
+ * All other config values remain at their defaults.
+ */
+function _buildPermissiveConfig() {
+  // ElGamal encrypt-only is algorithm 16 in RFC 4880 §9.1.
+  // OpenPGP.js v5 puts it in rejectPublicKeyAlgorithms by default.
+  const elgamalId = openpgp.enums?.publicKey?.elgamal ?? 16;
+  const rejectSet = new Set(openpgp.config?.rejectPublicKeyAlgorithms ?? []);
+  rejectSet.delete(elgamalId);
+  return { rejectPublicKeyAlgorithms: rejectSet };
+}
+
 // ── Key generation ────────────────────────────────────────────────────────────
 
 /**
@@ -184,14 +211,21 @@ export async function getKeyInfo(armoredKey) {
  * @returns {Promise<string>} Armored PGP message ("-----BEGIN PGP MESSAGE-----")
  */
 export async function encryptMessage(text, recipientPublicKeys, signingKey = null) {
-  const options = {
-    message: await openpgp.createMessage({ text }),
-    encryptionKeys: recipientPublicKeys,
-  };
-  if (signingKey) {
-    options.signingKeys = signingKey;
+  const message = await openpgp.createMessage({ text });
+  const options = { message, encryptionKeys: recipientPublicKeys };
+  if (signingKey) options.signingKeys = signingKey;
+
+  try {
+    return await openpgp.encrypt(options);
+  } catch (err) {
+    if (_isWeakKeyError(err)) {
+      // At least one recipient has a legacy key (e.g. DSA+ElGamal).
+      // Re-attempt with a permissive config that allows ElGamal.
+      // The caller should warn the user separately via hasWeakEncryptionKey().
+      return await openpgp.encrypt({ ...options, config: _buildPermissiveConfig() });
+    }
+    throw err;
   }
-  return await openpgp.encrypt(options);
 }
 
 /**
@@ -260,10 +294,36 @@ export async function encryptAttachment(data, filename, recipientPublicKeys, sig
     encryptionKeys: recipientPublicKeys,
     format: 'armored',
   };
-  if (signingKey) {
-    options.signingKeys = signingKey;
+  if (signingKey) options.signingKeys = signingKey;
+
+  try {
+    return await openpgp.encrypt(options);
+  } catch (err) {
+    if (_isWeakKeyError(err)) {
+      return await openpgp.encrypt({ ...options, config: _buildPermissiveConfig() });
+    }
+    throw err;
   }
-  return await openpgp.encrypt(options);
+}
+
+/**
+ * Returns true if any key in the array uses an algorithm that OpenPGP.js v5
+ * rejects by default (currently ElGamal and DSA).  Use this before encrypting
+ * to decide whether to show a "legacy key" warning in the UI.
+ *
+ * @param {openpgp.Key[]} keys
+ * @returns {Promise<boolean>}
+ */
+export async function hasWeakEncryptionKey(keys) {
+  for (const key of keys) {
+    if (typeof key?.getEncryptionKey !== 'function') continue;
+    try {
+      await key.getEncryptionKey();
+    } catch (err) {
+      if (_isWeakKeyError(err)) return true;
+    }
+  }
+  return false;
 }
 
 /**
