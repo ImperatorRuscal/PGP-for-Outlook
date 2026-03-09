@@ -22,8 +22,20 @@
   <SupportUrl DefaultValue="https://github.com/ImperatorRuscal/PGP-for-Outlook/" />
 
   <AppDomains>
-    <!-- Domains the add-in is allowed to navigate to.
-         Add your key-server / WKD domains if navigation is required. -->
+    <!--
+      AppDomains controls NAVIGATION only (task-pane redirects, iframes, window.open).
+      It does NOT restrict fetch() or XHR — those are governed by the browser's
+      same-origin policy + CORS headers on the remote server.
+
+      WKD lookups (fetch to arbitrary recipient domains) work provided the target
+      server includes "Access-Control-Allow-Origin: *" on its .well-known endpoint,
+      which all RFC-compliant WKD deployments must do.
+
+      The source domain (ImperatorRuscal.github.io) is trusted automatically by
+      Office and does not need to be listed here.
+
+      List here only domains that the add-in's task pane may *navigate to*:
+    -->
     <AppDomain>https://keys.openpgp.org</AppDomain>
   </AppDomains>
 
