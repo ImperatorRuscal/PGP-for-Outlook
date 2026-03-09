@@ -243,28 +243,47 @@ async function loadCompanyKeys() {
 // ── Attachments ───────────────────────────────────────────────────────────────
 
 function loadAttachments() {
-  const item = Office.context.mailbox.item;
-  const list = el('attachment-list');
-  const empty = el('attachments-empty');
+  const item    = Office.context.mailbox.item;
+  const list    = el('attachment-list');
+  const empty   = el('attachments-empty');
+  const loading = el('attachments-loading');
 
-  const attachments = item.attachments || [];
-  _attachments = attachments.filter(a => !a.isInline);
-
-  if (_attachments.length === 0) {
-    empty.classList.remove('pgp-hidden');
-    return;
-  }
-
+  loading.classList.remove('pgp-hidden');
   empty.classList.add('pgp-hidden');
-  list.innerHTML = '';
 
-  _attachments.forEach(att => {
-    const li = document.createElement('li');
-    li.className = 'pgp-attachment-item';
-    li.innerHTML = `
-      <span class="pgp-attachment-item__name" title="${escHtml(att.name)}">${escHtml(att.name)}</span>
-      <span class="pgp-badge pgp-badge--info pgp-badge--sm">→ ${escHtml(att.name)}.pgp</span>`;
-    list.appendChild(li);
+  // item.attachments is only updated for attachments added programmatically
+  // in the current task-pane session.  getAttachmentsAsync() returns the full
+  // list including any files the user attached before opening the pane.
+  return new Promise((resolve) => {
+    item.getAttachmentsAsync({}, (result) => {
+      loading.classList.add('pgp-hidden');
+
+      const raw = result.status === Office.AsyncResultStatus.Succeeded
+        ? result.value
+        : (item.attachments || []);   // graceful fallback for older hosts
+
+      _attachments = raw.filter(a => !a.isInline);
+
+      if (_attachments.length === 0) {
+        empty.classList.remove('pgp-hidden');
+        resolve();
+        return;
+      }
+
+      empty.classList.add('pgp-hidden');
+      list.innerHTML = '';
+
+      _attachments.forEach(att => {
+        const li = document.createElement('li');
+        li.className = 'pgp-attachment-item';
+        li.innerHTML = `
+          <span class="pgp-attachment-item__name" title="${escHtml(att.name)}">${escHtml(att.name)}</span>
+          <span class="pgp-badge pgp-badge--info pgp-badge--sm">→ ${escHtml(att.name)}.pgp</span>`;
+        list.appendChild(li);
+      });
+
+      resolve();
+    });
   });
 }
 
@@ -336,9 +355,9 @@ async function handleEncrypt() {
 
   try {
     // 0. Refresh the attachment list in case attachments were added after the
-    //    pane was first opened (item.attachments is live but _attachments is
-    //    only populated at load time).
-    loadAttachments();
+    //    pane was first opened.  Must be awaited so _attachments is current
+    //    before the encryption loop runs.
+    await loadAttachments();
 
     // 1. Unlock the private key — only needed when signing is enabled.
     //    Encrypting to our own public key (step 2) does NOT require the
