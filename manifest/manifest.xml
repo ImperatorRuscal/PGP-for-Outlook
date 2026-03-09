@@ -6,12 +6,11 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
 
-  <!-- ═══════════════════════════════════════════════════════════
-       Basic Settings — displayed in Microsoft 365 admin center
-  ════════════════════════════════════════════════════════════ -->
+  <!-- ================================================================
+       Basic Settings -- displayed in Microsoft 365 admin center
+  ================================================================ -->
 
-  <!-- IMPORTANT: Replace with a new GUID for production deployments -->
-  <Id>e1c8eb63-8194-4f6e-ae2e-5588bf7697fc</Id>
+  <Id>4086c384-c2b3-4932-9b97-2b4d14c4821a</Id>
   <Version>1.0.0.0</Version>
   <ProviderName>ImperatorRuscal</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
@@ -24,7 +23,7 @@
   <AppDomains>
     <!--
       AppDomains controls NAVIGATION only (task-pane redirects, iframes, window.open).
-      It does NOT restrict fetch() or XHR — those are governed by the browser's
+      It does NOT restrict fetch() or XHR -- those are governed by the browser's
       same-origin policy + CORS headers on the remote server.
 
       WKD lookups (fetch to arbitrary recipient domains) work provided the target
@@ -51,7 +50,7 @@
     </Sets>
   </Requirements>
 
-  <!-- Legacy form settings — fallback for very old clients -->
+  <!-- Legacy form settings -- fallback for very old clients -->
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
@@ -69,10 +68,10 @@
 
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
 
-  <!-- ═══════════════════════════════════════════════════════════
-       Version Overrides — modern Outlook ribbon integration
+  <!-- ================================================================
+       Version Overrides -- modern Outlook ribbon integration
        Requires Mailbox 1.8 for compose attachment access.
-  ════════════════════════════════════════════════════════════ -->
+  ================================================================ -->
   <VersionOverrides
     xmlns="http://schemas.microsoft.com/office/mailappversionoverrides"
     xsi:type="VersionOverridesV1_0">
@@ -90,9 +89,9 @@
           <!-- FunctionFile: hosts UI-less ExecuteFunction actions -->
           <FunctionFile resid="functionFile" />
 
-          <!-- ─────────────────────────────────────────────────
-               MESSAGE READ — decrypt + key management buttons
-          ────────────────────────────────────────────────── -->
+          <!-- -------------------------------------------------------
+               MESSAGE READ -- decrypt + key management buttons
+          ------------------------------------------------------- -->
           <ExtensionPoint xsi:type="MessageReadCommandSurface">
             <OfficeTab id="TabDefault">
               <Group id="msgReadGroup">
@@ -136,9 +135,9 @@
             </OfficeTab>
           </ExtensionPoint>
 
-          <!-- ─────────────────────────────────────────────────
-               MESSAGE COMPOSE — encrypt + key management buttons
-          ────────────────────────────────────────────────── -->
+          <!-- -------------------------------------------------------
+               MESSAGE COMPOSE -- encrypt + key management buttons
+          ------------------------------------------------------- -->
           <ExtensionPoint xsi:type="MessageComposeCommandSurface">
             <OfficeTab id="TabDefault">
               <Group id="msgComposeGroup">
@@ -186,9 +185,9 @@
       </Host>
     </Hosts>
 
-    <!-- ═══════════════════════════════════════════════════════
+    <!-- ================================================================
          Resource strings and URLs
-    ════════════════════════════════════════════════════════ -->
+    ================================================================ -->
     <Resources>
       <bt:Images>
         <bt:Image id="icon16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" />
