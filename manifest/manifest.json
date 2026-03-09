@@ -2,7 +2,7 @@
   "$schema": "https://developer.microsoft.com/json-schemas/teams/vDevPreview/MicrosoftTeams.schema.json",
   "manifestVersion": "devPreview",
   "id": "4086c384-c2b3-4932-9b97-2b4d14c4821a",
-  "version": "1.0.0.1",
+  "version": "1.0.1.1",
   "name": {
     "short": "PGP Encryption",
     "full": "PGP Encryption for Outlook"
@@ -43,6 +43,26 @@
         ]
       },
       "runtimes": [
+        {
+          "id": "FunctionRuntime",
+          "type": "general",
+          "code": {
+            "page": "https://ImperatorRuscal.github.io/PGP-for-Outlook/Functions/FunctionFile.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ReplyEncrypted",
+              "type": "executeFunction",
+              "displayName": "Reply Encrypted"
+            },
+            {
+              "id": "ReplyAllEncrypted",
+              "type": "executeFunction",
+              "displayName": "Reply All Encrypted"
+            }
+          ]
+        },
         {
           "id": "ReadTaskPane",
           "type": "general",
@@ -119,6 +139,21 @@
                         "description": "Open the PGP decryption pane to decrypt this message and verify its signature."
                       },
                       "actionId": "ShowReadPane"
+                    },
+                    {
+                      "id": "ReadReplyEncryptedButton",
+                      "type": "button",
+                      "label": "Reply Encrypted",
+                      "icons": [
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt80.png" }
+                      ],
+                      "supertip": {
+                        "title": "Reply Encrypted",
+                        "description": "Open a reply compose window for this message. Click Encrypt in the ribbon before sending to encrypt your reply."
+                      },
+                      "actionId": "ReplyEncrypted"
                     },
                     {
                       "id": "ReadKeysButton",
