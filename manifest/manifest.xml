@@ -391,9 +391,15 @@
                 <Control xsi:type="MobileButton" id="msgReadMobileDecryptButton">
                   <Label resid="readDecryptButtonLabel" />
                   <Icon>
-                    <bt:Image size="25" resid="iconDecrypt32" />
-                    <bt:Image size="32" resid="iconDecrypt32" />
-                    <bt:Image size="48" resid="iconDecrypt80" />
+                    <bt:Image size="25" scale="1" resid="iconDecrypt32" />
+                    <bt:Image size="25" scale="2" resid="iconDecrypt32" />
+                    <bt:Image size="25" scale="3" resid="iconDecrypt32" />
+                    <bt:Image size="32" scale="1" resid="iconDecrypt32" />
+                    <bt:Image size="32" scale="2" resid="iconDecrypt32" />
+                    <bt:Image size="32" scale="3" resid="iconDecrypt32" />
+                    <bt:Image size="48" scale="1" resid="iconDecrypt80" />
+                    <bt:Image size="48" scale="2" resid="iconDecrypt80" />
+                    <bt:Image size="48" scale="3" resid="iconDecrypt80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <SourceLocation resid="messageReadTaskPaneUrl" />
@@ -403,9 +409,15 @@
                 <Control xsi:type="MobileButton" id="msgReadMobileKeysButton">
                   <Label resid="manageKeysButtonLabel" />
                   <Icon>
-                    <bt:Image size="25" resid="icon32" />
-                    <bt:Image size="32" resid="icon32" />
-                    <bt:Image size="48" resid="icon80" />
+                    <bt:Image size="25" scale="1" resid="icon32" />
+                    <bt:Image size="25" scale="2" resid="icon32" />
+                    <bt:Image size="25" scale="3" resid="icon32" />
+                    <bt:Image size="32" scale="1" resid="icon32" />
+                    <bt:Image size="32" scale="2" resid="icon32" />
+                    <bt:Image size="32" scale="3" resid="icon32" />
+                    <bt:Image size="48" scale="1" resid="icon80" />
+                    <bt:Image size="48" scale="2" resid="icon80" />
+                    <bt:Image size="48" scale="3" resid="icon80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <SourceLocation resid="keyManagementTaskPaneUrl" />
