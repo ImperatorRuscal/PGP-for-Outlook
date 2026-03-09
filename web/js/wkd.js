@@ -53,6 +53,8 @@ export default class WKD {
         const localPartBase32 = encodeZBase32(localPartHashed);
         const localPartEscaped = encodeURIComponent(localPart);
 
+        // CORS: WKD-compliant servers must serve Access-Control-Allow-Origin: *
+        // AppDomains in the manifest does not restrict fetch() — only navigation.
         const urlAdvanced = `https://openpgpkey.${domain}/.well-known/openpgpkey/${domain}/hu/${localPartBase32}?l=${localPartEscaped}`;
         const urlDirect = `https://${domain}/.well-known/openpgpkey/hu/${localPartBase32}?l=${localPartEscaped}`;
 
