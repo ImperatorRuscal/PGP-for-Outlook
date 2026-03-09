@@ -110,9 +110,9 @@
                       "type": "button",
                       "label": "Decrypt",
                       "icons": [
-                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
-                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
-                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt80.png" }
                       ],
                       "supertip": {
                         "title": "Decrypt PGP Message",
@@ -161,9 +161,9 @@
                       "type": "button",
                       "label": "Encrypt",
                       "icons": [
-                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
-                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
-                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt80.png" }
                       ],
                       "supertip": {
                         "title": "Encrypt PGP Message",
