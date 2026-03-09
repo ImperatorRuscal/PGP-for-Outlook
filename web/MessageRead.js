@@ -271,13 +271,10 @@ function renderDecryptedBody(text, signatureResult, senderEmail) {
     sigDetails.classList.remove('pgp-hidden');
   }
 
-  // Detect whether the decrypted payload is HTML (messages encrypted by this
-  // add-in always are, since we encrypt CoercionType.Html).  Fall back to
-  // plain-text rendering for messages encrypted by third-party clients.
-  const trimmed = text.trimStart();
-  const isHtml  = trimmed.startsWith('<!DOCTYPE') ||
-                  trimmed.startsWith('<html')     ||
-                  trimmed.startsWith('<HTML');
+  // Detect whether the decrypted payload is HTML.  Outlook's getBodyAsync(Html)
+  // can return content starting with <div>, <body>, or <html> depending on the
+  // client, so we check for any leading HTML tag rather than just <html>.
+  const isHtml = /^\s*<[a-zA-Z!]/.test(text);
 
   if (isHtml) {
     // Render in a sandboxed iframe.  'allow-same-origin' lets the iframe read
@@ -306,6 +303,50 @@ function renderDecryptedBody(text, signatureResult, senderEmail) {
       window.prompt('Copy the decrypted content:', text);
     }
   });
+
+  el('btn-popout-decrypted').addEventListener('click', () => {
+    openDecryptedPopup(text, isHtml);
+  });
+}
+
+// ── Pop-out window ─────────────────────────────────────────────────────────────
+
+/**
+ * Open decrypted content in a larger, resizable browser window.
+ * For HTML payloads a CSP meta tag is injected to block script execution,
+ * mirroring the sandbox= restriction used by the in-pane iframe.
+ */
+function openDecryptedPopup(text, isHtml) {
+  let html;
+  if (isHtml) {
+    // Inject Content-Security-Policy into <head> (or synthesise one) so that
+    // scripts inside the decrypted HTML cannot run in the popup window.
+    const csp = `<meta http-equiv="Content-Security-Policy" ` +
+                `content="script-src 'none'; object-src 'none';">`;
+    if (/<head[\s>]/i.test(text)) {
+      html = text.replace(/(<head[\s>][^>]*>)/i, `$1${csp}`);
+    } else {
+      // No <head> — wrap content in a minimal shell with the CSP.
+      html = `<!DOCTYPE html><html><head>${csp}</head><body>${text}</body></html>`;
+    }
+  } else {
+    const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8">` +
+      `<style>body{font-family:Calibri,Arial,sans-serif;font-size:14px;` +
+      `line-height:1.6;padding:24px;white-space:pre-wrap;word-break:break-word;}</style>` +
+      `</head><body>${safe}</body></html>`;
+  }
+
+  // Use a Blob URL to avoid document.write and to work with strict CSPs on
+  // the host page.  Revoke after 60 s — plenty of time for the window to load.
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  const popup = window.open(url, '_blank', 'resizable=yes,width=840,height=680,scrollbars=yes');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+  if (!popup) {
+    showStatus('Pop-out was blocked — please allow pop-ups for this page and try again.', 'warning');
+  }
 }
 
 // ── Verify signed-only body ───────────────────────────────────────────────────
