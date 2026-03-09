@@ -34,6 +34,7 @@
 import {
   unlockPrivateKey, readPublicKey, getKeyInfo,
   encryptMessage, encryptAttachment,
+  hasWeakEncryptionKey,
   base64ToUint8Array,
   detectPgpContent,
 } from './js/pgp/pgp-core.js';
@@ -334,6 +335,11 @@ async function handleEncrypt() {
   spinner.classList.remove('pgp-hidden');
 
   try {
+    // 0. Refresh the attachment list in case attachments were added after the
+    //    pane was first opened (item.attachments is live but _attachments is
+    //    only populated at load time).
+    loadAttachments();
+
     // 1. Unlock the private key — only needed when signing is enabled.
     //    Encrypting to our own public key (step 2) does NOT require the
     //    private key; the public key alone is sufficient for encryption.
@@ -369,6 +375,20 @@ async function handleEncrypt() {
     const companyKeyObjects = includeCompanyKey ? _companyKeys.map(ck => ck.key) : [];
 
     const allEncryptionKeys = [ownPublicKey, ...recipientKeys, ...companyKeyObjects];
+
+    // 2b. Warn (but do not block) if any recipient uses a legacy key algorithm
+    //     such as ElGamal. Encryption will still succeed via an automatic retry
+    //     with a permissive config inside encryptMessage / encryptAttachment.
+    if (await hasWeakEncryptionKey(recipientKeys)) {
+      showStatus(
+        '⚠ One or more recipients use a legacy key algorithm (e.g. ElGamal/DSA). ' +
+        'Encryption will proceed, but their key offers reduced security compared to modern ECC or RSA-2048+ keys.',
+        'warning'
+      );
+      // Brief pause so the user can read the warning before it is replaced by
+      // the progress message below.
+      await new Promise(r => setTimeout(r, 2000));
+    }
 
     // 3. Get the message body as HTML so that all formatting, inline images, and
     //    rich-text markup are preserved exactly.  We encrypt the raw HTML string

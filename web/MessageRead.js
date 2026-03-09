@@ -110,9 +110,43 @@ function promptPassphrase(message = 'Enter your passphrase to decrypt.') {
 
 // ── Message body detection ────────────────────────────────────────────────────
 
+/**
+ * Extract the plain text from an HTML string by rendering it into a temporary
+ * element and reading innerText.  This decodes HTML entities and inserts line
+ * breaks at block-level elements, faithfully recreating what a reader would see.
+ * Used as a fallback when the plain-text body from Office.js has been mangled
+ * by Outlook's HTML round-trip (missing blank lines, entity-encoded dashes, etc.).
+ */
+function extractTextFromHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  // innerText respects CSS display, inserting newlines at block boundaries.
+  // This preserves the blank-line separator that PGP armor requires.
+  return div.innerText ?? div.textContent ?? '';
+}
+
 async function detectAndRenderBody() {
-  const body = await getBodyAsync(Office.CoercionType.Text);
-  const pgpType = detectPgpContent(body);
+  // Primary: read as plain text.
+  let body = await getBodyAsync(Office.CoercionType.Text);
+  let pgpType = detectPgpContent(body);
+
+  // Fallback: if no PGP markers found in the text body, try the HTML body.
+  // When Outlook sends an HTML-format email the plain-text rendition can lose
+  // blank lines, entity-encode dashes, or otherwise mangle the PGP armor so
+  // that the -----BEGIN marker is no longer a literal substring.
+  if (!pgpType) {
+    try {
+      const htmlBody = await getBodyAsync(Office.CoercionType.Html);
+      const textFromHtml = extractTextFromHtml(htmlBody);
+      const pgpTypeFromHtml = detectPgpContent(textFromHtml);
+      if (pgpTypeFromHtml) {
+        body = textFromHtml;
+        pgpType = pgpTypeFromHtml;
+      }
+    } catch {
+      // HTML body unavailable — stick with what we have.
+    }
+  }
 
   el('detection-loading').classList.add('pgp-hidden');
 
