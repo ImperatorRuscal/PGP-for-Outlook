@@ -430,6 +430,14 @@ async function handleEncrypt() {
       return;
     }
 
+    // Warn if the body references cid: inline attachments (e.g. embedded images).
+    // These are incompatible with PGP encryption — the cid: URIs cannot be
+    // resolved after the body is replaced with armor text.
+    if (/\bcid:/i.test(bodyHtml)) {
+      const proceed = await confirmInlineAttachments();
+      if (!proceed) throw new Error('Cancelled by user.');
+    }
+
     const encryptedBody = await encryptMessage(bodyHtml, allEncryptionKeys, signingKey);
 
     // The outer body is plain-text PGP armor — recipients without the add-in
@@ -457,6 +465,31 @@ async function handleEncrypt() {
     btn.disabled = encrypted; // keep disabled after success so user can't re-encrypt
     spinner.classList.add('pgp-hidden');
   }
+}
+
+/**
+ * Warn the user that the message body contains cid: inline attachments which
+ * are incompatible with PGP encryption, then let them choose to proceed or
+ * cancel.  Resolves true → continue, false → abort.
+ */
+function confirmInlineAttachments() {
+  return new Promise((resolve) => {
+    const modal = el('cid-warning-modal');
+    modal.style.display = 'flex';
+    modal.classList.remove('pgp-hidden');
+
+    function cleanup() {
+      modal.style.display = '';
+      modal.classList.add('pgp-hidden');
+      el('btn-cid-continue').removeEventListener('click', onContinue);
+      el('btn-cid-cancel').removeEventListener('click', onCancel);
+    }
+    function onContinue() { cleanup(); resolve(true); }
+    function onCancel()   { cleanup(); resolve(false); }
+
+    el('btn-cid-continue').addEventListener('click', onContinue);
+    el('btn-cid-cancel').addEventListener('click', onCancel);
+  });
 }
 
 function getBodyAsync(coercionType = Office.CoercionType.Text) {
