@@ -13,7 +13,7 @@
   <!-- IMPORTANT: Replace with a new GUID for production deployments -->
   <Id>e1c8eb63-8194-4f6e-ae2e-5588bf7697fc</Id>
   <Version>1.0.0.0</Version>
-  <ProviderName>Acme Widget Co.</ProviderName>
+  <ProviderName>ImperatorRuscal</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="PGP Encryption" />
   <Description DefaultValue="PGP message encryption, decryption and key management for Outlook." />
