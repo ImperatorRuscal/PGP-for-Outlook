@@ -7,7 +7,7 @@
   xsi:type="MailApp">
 
   <!-- ═══════════════════════════════════════════════════════════
-       Basic Settings — displayed in Microsoft 365 admin centre
+       Basic Settings — displayed in Microsoft 365 admin center
   ════════════════════════════════════════════════════════════ -->
 
   <!-- IMPORTANT: Replace with a new GUID for production deployments -->
@@ -17,9 +17,9 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="PGP Encryption" />
   <Description DefaultValue="PGP message encryption, decryption and key management for Outlook." />
-  <IconUrl DefaultValue="~remoteAppUrl/images/Icon64.png" />
-  <HighResolutionIconUrl DefaultValue="~remoteAppUrl/images/Icon80.png" />
-  <SupportUrl DefaultValue="https://github.com/ImperatorRuscal/TEST_PGP-for-Outlook" />
+  <IconUrl DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon64.png" />
+  <HighResolutionIconUrl DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" />
+  <SupportUrl DefaultValue="https://github.com/ImperatorRuscal/PGP-for-Outlook/" />
 
   <AppDomains>
     <!-- Domains the add-in is allowed to navigate to.
@@ -43,7 +43,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="~remoteAppUrl/MessageRead.html" />
+        <SourceLocation DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageRead.html" />
         <RequestedHeight>300</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -179,16 +179,16 @@
     ════════════════════════════════════════════════════════ -->
     <Resources>
       <bt:Images>
-        <bt:Image id="icon16" DefaultValue="~remoteAppUrl/images/Icon16.png" />
-        <bt:Image id="icon32" DefaultValue="~remoteAppUrl/images/Icon32.png" />
-        <bt:Image id="icon80" DefaultValue="~remoteAppUrl/images/Icon80.png" />
+        <bt:Image id="icon16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" />
+        <bt:Image id="icon32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" />
+        <bt:Image id="icon80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" />
       </bt:Images>
 
       <bt:Urls>
-        <bt:Url id="functionFile"             DefaultValue="~remoteAppUrl/Functions/FunctionFile.html" />
-        <bt:Url id="messageReadTaskPaneUrl"   DefaultValue="~remoteAppUrl/MessageRead.html" />
-        <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="~remoteAppUrl/MessageCompose.html" />
-        <bt:Url id="keyManagementTaskPaneUrl" DefaultValue="~remoteAppUrl/KeyManagement.html" />
+        <bt:Url id="functionFile"             DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/Functions/FunctionFile.html" />
+        <bt:Url id="messageReadTaskPaneUrl"   DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageRead.html" />
+        <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageCompose.html" />
+        <bt:Url id="keyManagementTaskPaneUrl" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/KeyManagement.html" />
       </bt:Urls>
 
       <bt:ShortStrings>
@@ -214,7 +214,7 @@
         <bt:String id="composeEncryptSuperTipDescription"
           DefaultValue="Open the PGP encryption pane to encrypt this message before sending." />
         <bt:String id="manageKeysSuperTipDescription"
-          DefaultValue="Generate or import PGP keys, manage your keyring, and configure organisation settings." />
+          DefaultValue="Generate or import PGP keys, manage your keyring, and configure organization settings." />
       </bt:LongStrings>
     </Resources>
 

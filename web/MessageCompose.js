@@ -11,7 +11,10 @@
  *     to the local keyring with one click.
  *  3. The company key (if org config enables it) is fetched from WKD/VKS and
  *     added to every encryption unconditionally (or optionally, per org policy).
- *  4. Clicking "Encrypt Message":
+ *  4. The "Sign this message" toggle is initialized from the user's stored
+ *     pgp_sign_default preference (default: false / off).  The user can flip
+ *     it for any individual message regardless of the stored default.
+ *  5. Clicking "Encrypt Message":
  *       a. If signing is enabled, checks the session cache for an already-
  *          unlocked key.  If none, prompts for the passphrase, unlocks, and
  *          caches it for 15 minutes of inactivity.
@@ -22,7 +25,7 @@
  *          When the recipient decrypts, they recover the original HTML exactly.
  *       d. For each non-inline attachment: reads, encrypts to a .pgp file,
  *          removes the original, and adds the encrypted version.
- *  5. After encryption the Encrypt button is disabled so the message cannot be
+ *  6. After encryption the Encrypt button is disabled so the message cannot be
  *     double-encrypted.  The user then sends the message normally.
  *
  * Requires: Mailbox 1.8 (for getAttachmentContentAsync / addFileAttachmentFromBase64Async)
@@ -34,7 +37,7 @@ import {
   base64ToUint8Array,
   detectPgpContent,
 } from './js/pgp/pgp-core.js';
-import { hasKeyPair, getPrivateKey, getPublicKey } from './js/pgp/key-storage.js';
+import { hasKeyPair, getPrivateKey, getPublicKey, getSignDefault } from './js/pgp/key-storage.js';
 import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   getSessionEmail, getSessionShortId, onSessionCleared,
@@ -581,6 +584,10 @@ Office.onReady(async () => {
     loadCompanyKeys(),
   ]);
   loadAttachments();
+
+  // Apply the user's stored sign-by-default preference.
+  // The user can flip the toggle for any individual message.
+  el('sign-toggle').checked = getSignDefault();
 
   // Reflect initial session cache state (user may have just come from KeyManagement)
   updateSessionStatus();

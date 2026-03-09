@@ -18,13 +18,16 @@
  *   pgp_key_meta     — Object: { name, email, fingerprint, keyId, created, expires }
  *   pgp_keyring      — Object: { "email@example.com": "-----BEGIN PGP PUBLIC KEY BLOCK-----..." }
  *   pgp_org_override — Object: manual org config override (see org-config.js)
+ *   pgp_sign_default — Boolean: user's personal default for the "sign messages" toggle
+ *                      (defaults to false; overridable per-message in the compose pane)
  *
  * Storage budget (approximate):
  *   Private key (ECC/curve25519 + passphrase encryption): ~3–6 KB
- *   Public key: ~0.5–1 KB
+ *   Private key (RSA-4096 + passphrase encryption):       ~6–10 KB
+ *   Public key (ECC): ~0.5–1 KB  |  Public key (RSA-4096): ~1.5–2 KB
  *   Metadata: <0.2 KB
  *   Per contact public key: ~1–3 KB
- *   ⇒ Comfortable room for ~8–10 contact keys before approaching the limit.
+ *   ⇒ Comfortable room for ~8–10 ECC contact keys before approaching the limit.
  *   Use estimateStorageUsage() and STORAGE_LIMIT_BYTES to warn the user early.
  */
 
@@ -34,6 +37,7 @@ const KEYS = {
   META:         'pgp_key_meta',
   KEYRING:      'pgp_keyring',
   ORG_OVERRIDE: 'pgp_org_override',
+  SIGN_DEFAULT: 'pgp_sign_default',
 };
 
 function settings() {
@@ -119,6 +123,31 @@ export async function clearOrgOverride() {
   await saveAsync();
 }
 
+// ── Personal compose preferences ─────────────────────────────────────────────
+
+/**
+ * Return the user's stored sign-by-default preference.
+ * When not set, returns false (signing off by default).
+ * Users can change this in Manage Keys → Personal Preferences and
+ * override it per-message using the sign toggle in the compose pane.
+ *
+ * @returns {boolean}
+ */
+export function getSignDefault() {
+  const stored = settings().get(KEYS.SIGN_DEFAULT);
+  // Treat any non-boolean stored value as false to be safe.
+  return stored === true;
+}
+
+/**
+ * Persist the user's sign-by-default preference.
+ * @param {boolean} value
+ */
+export async function saveSignDefault(value) {
+  settings().set(KEYS.SIGN_DEFAULT, !!value);
+  await saveAsync();
+}
+
 // ── Storage diagnostics ───────────────────────────────────────────────────────
 
 /**
@@ -132,6 +161,7 @@ export function estimateStorageUsage() {
     [KEYS.META]:         settings().get(KEYS.META) || {},
     [KEYS.KEYRING]:      settings().get(KEYS.KEYRING) || {},
     [KEYS.ORG_OVERRIDE]: settings().get(KEYS.ORG_OVERRIDE) || {},
+    [KEYS.SIGN_DEFAULT]: settings().get(KEYS.SIGN_DEFAULT) || false,
   };
   return JSON.stringify(data).length;
 }

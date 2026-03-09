@@ -6,14 +6,21 @@
  * OpenPGP.js library.  All other modules go through these wrappers, which
  * keeps the crypto surface small and easy to audit.
  *
- * Key algorithm choice: Ed25519 (signing) + X25519 (encryption), curve25519.
- * Rationale:
- *   - Compact keys and signatures (~200 bytes vs ~512 bytes for RSA-2048)
- *   - Widely supported by modern OpenPGP clients (GnuPG ≥ 2.1, Thunderbird, etc.)
- *   - Deterministic signing — no random-number dependency during sign operations
- *   - Strongly recommended by the OpenPGP RFC 9580 "crypto-refresh" update
- * If you need compatibility with very old clients (GnuPG < 2.1), consider
- * switching to RSA-4096 in generateKeyPair().
+ * Supported key types (passed as the `keyType` argument to generateKeyPair):
+ *
+ *   'ecc'  — Ed25519 (signing) + X25519 (encryption), curve25519.  Default.
+ *     Rationale:
+ *       - Compact keys and signatures (~200 bytes vs ~512 bytes for RSA-2048)
+ *       - Widely supported by modern OpenPGP clients (GnuPG ≥ 2.1, Thunderbird, etc.)
+ *       - Deterministic signing — no random-number dependency during sign operations
+ *       - Strongly recommended by the OpenPGP RFC 9580 "crypto-refresh" update
+ *
+ *   'rsa4096' — RSA-4096 (sign + encrypt, legacy).
+ *     Rationale:
+ *       - Maximum interoperability with older PGP clients (GnuPG < 2.1, PGP 2.x, etc.)
+ *       - Larger keys (~6–10 KB stored) and slower generation (~5–15 s in-browser)
+ *       - Choose this only when you need to exchange keys with clients that do not
+ *         support modern ECC algorithms (pre-2015 software or constrained appliances)
  */
 
 import * as openpgp from '../openpgp.min.mjs';
@@ -21,26 +28,45 @@ import * as openpgp from '../openpgp.min.mjs';
 // ── Key generation ────────────────────────────────────────────────────────────
 
 /**
- * Generate a new ECC key pair (Ed25519 signing / X25519 encryption).
- * The private key is returned armored and encrypted with the given passphrase.
+ * Generate a new PGP key pair protected by a passphrase.
  *
  * The passphrase is applied using AES-256 symmetric encryption inside the
  * OpenPGP packet structure (S2K + CFB).  The private key material is never
  * accessible without the passphrase.
  *
- * @param {string} name       - User's full name (embedded in the key UID)
- * @param {string} email      - User's email address (embedded in the key UID)
- * @param {string} passphrase - Passphrase to protect the private key
- * @returns {{ privateKey: string, publicKey: string }} Armored key strings
+ * @param {string} name              - User's full name (embedded in the key UID)
+ * @param {string} email             - User's email address (embedded in the key UID)
+ * @param {string} passphrase        - Passphrase to protect the private key
+ * @param {'ecc'|'rsa4096'} [keyType='ecc']
+ *   'ecc'     — Ed25519 / X25519 (modern, compact, fast).  Recommended default.
+ *   'rsa4096' — RSA-4096 (legacy interoperability with older PGP clients such as
+ *               GnuPG < 2.1).  Key generation takes several seconds in-browser
+ *               and produces larger keys (~6–10 KB vs ~3–6 KB for ECC).
+ * @returns {Promise<{ privateKey: string, publicKey: string }>} Armored key strings
  */
-export async function generateKeyPair(name, email, passphrase) {
-  const { privateKey, publicKey } = await openpgp.generateKey({
-    type: 'ecc',
-    curve: 'curve25519',
-    userIDs: [{ name, email }],
-    passphrase,
-    format: 'armored',
-  });
+export async function generateKeyPair(name, email, passphrase, keyType = 'ecc') {
+  let genOptions;
+
+  if (keyType === 'rsa4096') {
+    genOptions = {
+      type: 'rsa',
+      rsaBits: 4096,
+      userIDs: [{ name, email }],
+      passphrase,
+      format: 'armored',
+    };
+  } else {
+    // Default: ECC (Ed25519 + X25519 / curve25519)
+    genOptions = {
+      type: 'ecc',
+      curve: 'curve25519',
+      userIDs: [{ name, email }],
+      passphrase,
+      format: 'armored',
+    };
+  }
+
+  const { privateKey, publicKey } = await openpgp.generateKey(genOptions);
   return { privateKey, publicKey };
 }
 
@@ -174,7 +200,7 @@ export async function decryptMessage(armoredMessage, decryptionKey, verification
     decryptionKeys: decryptionKey,
     verificationKeys: verificationKeys.length > 0 ? verificationKeys : undefined,
     // expectSigned: false means we don't throw if there's no signature.
-    // This is correct behaviour for encrypted-only (no signature) messages.
+    // This is correct behavior for encrypted-only (no signature) messages.
     expectSigned: false,
   });
 

@@ -12,7 +12,7 @@
  *   server at a predictable well-known URL, e.g.:
  *     https://example.com/.well-known/openpgpkey/hu/<zbase32-hash>
  *   Keys published via WKD are authoritative for that domain and are returned
- *   as binary (not armored).  Many organisations and providers (Proton Mail,
+ *   as binary (not armored).  Many organizations and providers (Proton Mail,
  *   Fastmail, etc.) support WKD natively.
  *
  * About VKS (keys.openpgp.org):

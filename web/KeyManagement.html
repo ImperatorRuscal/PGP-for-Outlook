@@ -64,6 +64,26 @@
       <div class="pgp-section-title" style="margin-bottom:12px;">Generate Key Pair</div>
 
       <div class="pgp-field">
+        <label>Key type</label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+            <input type="radio" name="gen-key-type" id="gen-key-type-ecc" value="ecc" checked style="margin-top:3px;" />
+            <span>
+              <strong>ECC (Ed25519 / X25519)</strong> — Recommended<br/>
+              <span style="font-size:11px;color:#605e5c;">Modern, compact keys (~3–6 KB). Supported by GnuPG ≥ 2.1, Thunderbird, Proton Mail, and most current clients.</span>
+            </span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+            <input type="radio" name="gen-key-type" id="gen-key-type-rsa" value="rsa4096" style="margin-top:3px;" />
+            <span>
+              <strong>RSA-4096</strong> — Legacy compatibility<br/>
+              <span style="font-size:11px;color:#605e5c;">Larger keys (~6–10 KB), slower to generate. Use only when exchanging keys with older clients (GnuPG &lt; 2.1, pre-2015 PGP software).</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="pgp-field">
         <label for="gen-name">Full name</label>
         <input type="text" id="gen-name" placeholder="Alice Smith" autocomplete="off" />
       </div>
@@ -141,12 +161,12 @@
   </section>
 
   <!-- ═══════════════════════════════════════════════════════
-       ORGANISATION SETTINGS
+       ORGANIZATION SETTINGS
   ══════════════════════════════════════════════════════════ -->
   <section class="pgp-section" id="section-org">
-    <div class="pgp-section-title">Organisation Settings</div>
+    <div class="pgp-section-title">Organization Settings</div>
     <p style="font-size:12px;color:#605e5c;margin:0 0 10px 0;">
-      These settings are normally loaded automatically from your organisation's
+      These settings are normally loaded automatically from your organization's
       domain. Use the override below only if auto-discovery fails.
     </p>
 
@@ -182,6 +202,34 @@
     <div class="pgp-row pgp-mt-md">
       <button class="pgp-btn pgp-btn--primary" id="btn-save-org">Save Override</button>
       <button class="pgp-btn pgp-btn--secondary" id="btn-clear-org">Clear Override</button>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════
+       PERSONAL PREFERENCES
+  ══════════════════════════════════════════════════════════ -->
+  <section class="pgp-section" id="section-prefs">
+    <div class="pgp-section-title">Personal Preferences</div>
+    <p style="font-size:12px;color:#605e5c;margin:0 0 10px 0;">
+      These defaults apply to your compose sessions. You can always override
+      them per-message using the toggles in the compose pane.
+    </p>
+
+    <label class="pgp-toggle" style="margin-bottom:10px;">
+      <input type="checkbox" id="pref-sign-default" />
+      <span class="pgp-toggle__track"></span>
+      <span class="pgp-toggle__label">Sign encrypted messages by default</span>
+    </label>
+    <p style="font-size:12px;color:#605e5c;margin:0 0 10px 50px;">
+      Signing lets recipients verify the message came from you. Requires your
+      passphrase at send time. Off by default; enable here to make it your
+      personal default.
+    </p>
+
+    <div id="prefs-save-status" class="pgp-hidden pgp-mt-sm"></div>
+
+    <div class="pgp-row pgp-mt-md">
+      <button class="pgp-btn pgp-btn--primary" id="btn-save-prefs">Save Preferences</button>
     </div>
   </section>
 

@@ -6,7 +6,9 @@
  * Sections:
  *
  *  MY KEY PAIR
- *    Generate a new Ed25519/X25519 key pair protected by a passphrase.
+ *    Generate a new key pair protected by a passphrase.  Two key types:
+ *      - ECC (Ed25519/X25519, curve25519) — compact, fast, recommended default
+ *      - RSA-4096 — legacy interoperability with older PGP clients (GnuPG < 2.1)
  *    The passphrase-encrypted private key and the public key are stored in
  *    Office roaming settings — they follow the user across devices via their
  *    Microsoft 365 account, but never leave the Office ecosystem unencrypted.
@@ -19,12 +21,17 @@
  *    armored text directly.  A storage-usage warning appears when the 32 KB
  *    roaming settings ceiling is within 20% of being reached.
  *
- *  ORGANISATION SETTINGS
+ *  ORGANIZATION SETTINGS
  *    The add-in tries to load org-level config from:
  *      https://<user-email-domain>/.well-known/pgp-outlook-config.json
  *    IT admins can enable/configure the company key feature by publishing that
  *    file.  A manual override (stored in roaming settings) takes precedence
  *    and is intended for orgs that cannot host a well-known file.
+ *
+ *  PERSONAL PREFERENCES
+ *    User-level compose defaults stored in roaming settings.  Currently:
+ *      - pgp_sign_default: whether the sign toggle starts checked in the
+ *        compose pane.  Default is false; the user can override per-message.
  */
 
 import { generateKeyPair, getKeyInfo } from './js/pgp/pgp-core.js';
@@ -32,6 +39,7 @@ import {
   hasKeyPair, getPrivateKey, getPublicKey, getKeyMetadata,
   saveKeyPair, clearKeyPair,
   getOrgOverride, saveOrgOverride, clearOrgOverride,
+  getSignDefault, saveSignDefault,
 } from './js/pgp/key-storage.js';
 import {
   addContactKey, removeContactKey, listContactKeys, getKeyringStorageInfo,
@@ -99,6 +107,8 @@ function showGenerateForm() {
 
 function hideGenerateForm() {
   el('panel-generate-form').classList.add('pgp-hidden');
+  // Reset key type to recommended default
+  el('gen-key-type-ecc').checked = true;
   el('gen-name').value = '';
   el('gen-email').value = '';
   el('gen-passphrase').value = '';
@@ -112,6 +122,10 @@ async function handleGenerate() {
   const passphrase = el('gen-passphrase').value;
   const confirm    = el('gen-passphrase-confirm').value;
 
+  // Read selected key type from radio buttons (defaults to 'ecc')
+  const keyTypeEl = document.querySelector('input[name="gen-key-type"]:checked');
+  const keyType   = keyTypeEl?.value || 'ecc';
+
   if (!name)       return showStatus('gen-status', 'Full name is required.', 'error');
   if (!email)      return showStatus('gen-status', 'Email address is required.', 'error');
   if (!passphrase) return showStatus('gen-status', 'A passphrase is required.', 'error');
@@ -122,10 +136,16 @@ async function handleGenerate() {
   const spinner = el('gen-spinner');
   btn.disabled = true;
   spinner.classList.remove('pgp-hidden');
-  hideStatus('gen-status');
+
+  // RSA-4096 generation can take several seconds — let the user know
+  if (keyType === 'rsa4096') {
+    showStatus('gen-status', 'Generating RSA-4096 key — this may take 5–15 seconds…', 'info');
+  } else {
+    hideStatus('gen-status');
+  }
 
   try {
-    const { privateKey: armoredPrivate, publicKey: armoredPublic } = await generateKeyPair(name, email, passphrase);
+    const { privateKey: armoredPrivate, publicKey: armoredPublic } = await generateKeyPair(name, email, passphrase, keyType);
     const info = await getKeyInfo(armoredPublic);
 
     await saveKeyPair(armoredPrivate, armoredPublic, {
@@ -361,7 +381,7 @@ async function handleImportKey() {
 
 function refreshOrgPanel() {
   const override = getOrgOverride();
-  const config = getOrgConfig();
+  const config = getOrgConfig(); // eslint-disable-line no-unused-vars
 
   if (override) {
     showStatus('org-status',
@@ -370,12 +390,12 @@ function refreshOrgPanel() {
     );
   } else if (isCompanyKeyEnabled()) {
     showStatus('org-status',
-      `Org config loaded from domain. Company key: ${getCompanyKeyEmails().join(', ')}`,
+      `Organization config loaded from domain. Company key: ${getCompanyKeyEmails().join(', ')}`,
       'info'
     );
   } else {
     showStatus('org-status',
-      'No org config found. Company key feature is disabled.',
+      'No organization config found. Company key feature is disabled.',
       'neutral'
     );
   }
@@ -400,6 +420,24 @@ async function handleClearOrgOverride() {
   await clearOrgOverride();
   showStatus('org-save-status', 'Override cleared. Auto-discovery will be used.', 'info');
   refreshOrgPanel();
+}
+
+// ── Personal preferences panel ────────────────────────────────────────────────
+
+/**
+ * Populate the Personal Preferences section from stored settings.
+ */
+function refreshPrefsPanel() {
+  el('pref-sign-default').checked = getSignDefault();
+}
+
+/**
+ * Persist the user's personal compose preferences to roaming settings.
+ */
+async function handleSavePrefs() {
+  const signDefault = el('pref-sign-default').checked;
+  await saveSignDefault(signDefault);
+  showStatus('prefs-save-status', 'Preferences saved.', 'success');
 }
 
 // ── XSS-safe HTML escaping ────────────────────────────────────────────────────
@@ -460,8 +498,12 @@ Office.onReady(async () => {
   el('btn-save-org').addEventListener('click', handleSaveOrgOverride);
   el('btn-clear-org').addEventListener('click', handleClearOrgOverride);
 
+  // Personal preferences
+  el('btn-save-prefs').addEventListener('click', handleSavePrefs);
+
   // Initial render
   await refreshMyKeyPanel();
   await refreshKeyringPanel();
   refreshOrgPanel();
+  refreshPrefsPanel();
 });
