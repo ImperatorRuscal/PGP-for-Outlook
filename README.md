@@ -11,7 +11,8 @@ software, plugins, or IT-managed infrastructure.
 | Feature | Details |
 |---------|---------|
 | **Key pair generation** | ECC (Ed25519/X25519) or RSA-4096 keys generated in-browser; private key stored passphrase-encrypted in Office roaming settings |
-| **Key export / sharing** | Copy public key to clipboard or open a pre-filled compose window to send it |
+| **Key import** | Import an existing PGP private key from GnuPG, Kleopatra, Thunderbird, or any OpenPGP-compatible client; passphrase is verified before saving |
+| **Key export / sharing** | Copy public key to clipboard, send via email, or download a passphrase-protected private key backup |
 | **Contacts' keyring** | Store, search, and remove trusted contacts' public keys |
 | **Key discovery** | Automatic lookup via WKD → VKS (keys.openpgp.org) → manual paste |
 | **Message encryption** | Encrypts the message body and replaces it with PGP armor before sending |
@@ -306,11 +307,12 @@ roaming settings and takes precedence over any well-known URL.
 ### Initial setup
 
 1. Open any email in Outlook and click **Manage Keys** in the ribbon.
-2. Click **Generate New Key Pair**.
-   - Choose **ECC (Ed25519 / X25519)** unless you need to exchange keys with
-     older PGP clients (GnuPG < 2.1) — in that case choose **RSA-4096**.
-   - Fill in your name, email, and a strong passphrase.  Write the passphrase
-     down somewhere safe — it cannot be recovered if lost.
+2. Set up your key pair — choose one of:
+   - **Generate New Key Pair** — choose ECC (recommended) or RSA-4096 for
+     legacy compatibility, fill in your name, email, and a strong passphrase.
+   - **Import Existing Key** — paste your armored private key block (from
+     GnuPG, Kleopatra, Thunderbird, etc.) and enter its passphrase to verify.
+     Any OpenPGP key type is accepted (RSA, ECC, DSA/ElGamal).
 3. Click **Copy Public Key** and share it with contacts who need to send you
    encrypted mail (email it, upload to [keys.openpgp.org](https://keys.openpgp.org),
    or publish via WKD).

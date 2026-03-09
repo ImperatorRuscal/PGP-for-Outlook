@@ -25,12 +25,17 @@
     <!-- No key exists yet -->
     <div id="panel-no-key">
       <div class="pgp-alert pgp-alert--info pgp-mt-sm">
-        You don't have a PGP key pair yet. Generate one below to start
-        encrypting and signing messages.
+        You don't have a PGP key pair yet. Generate a new one or import an
+        existing key below.
       </div>
-      <button class="pgp-btn pgp-btn--primary pgp-btn--full pgp-mt-md" id="btn-show-generate">
-        Generate New Key Pair
-      </button>
+      <div class="pgp-row pgp-mt-md" style="flex-wrap:wrap;gap:6px;">
+        <button class="pgp-btn pgp-btn--primary" style="flex:1;" id="btn-show-generate">
+          Generate New Key Pair
+        </button>
+        <button class="pgp-btn pgp-btn--secondary" style="flex:1;" id="btn-show-import-key">
+          Import Existing Key
+        </button>
+      </div>
     </div>
 
     <!-- Key exists — show info -->
@@ -50,6 +55,7 @@
         <button class="pgp-btn pgp-btn--secondary" id="btn-send-pubkey">Send via Email</button>
         <button class="pgp-btn pgp-btn--secondary" id="btn-export-key">Download Backup</button>
         <button class="pgp-btn pgp-btn--secondary" id="btn-show-generate">Regenerate Key</button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-show-import-key">Import Key</button>
         <button class="pgp-btn pgp-btn--danger"    id="btn-delete-key">Delete Key</button>
       </div>
       <p style="font-size:11px;color:#605e5c;margin:6px 0 0;">
@@ -57,6 +63,41 @@
         a <code>.asc</code> file. Keep this file secure — it cannot be decrypted without
         your passphrase.
       </p>
+    </div>
+
+    <!-- Import existing private key form (hidden until triggered) -->
+    <div id="panel-import-key-form" class="pgp-hidden" style="margin-top:12px;border-top:1px solid #edebe9;padding-top:12px;">
+      <div class="pgp-section-title" style="margin-bottom:6px;">Import Existing Private Key</div>
+      <p style="font-size:12px;color:#605e5c;margin:0 0 10px 0;">
+        Paste your armored private key block below.  RSA, ECC, and other
+        OpenPGP-compatible key types are all supported.  Your passphrase is
+        required to verify the key is readable — it will not be stored.
+      </p>
+
+      <div class="pgp-field">
+        <label for="import-privkey-text">Armored private key</label>
+        <textarea id="import-privkey-text" rows="7"
+          placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"
+          style="font-family:monospace;font-size:11px;resize:vertical;"></textarea>
+      </div>
+      <div class="pgp-field">
+        <label for="import-privkey-passphrase">Passphrase</label>
+        <input type="password" id="import-privkey-passphrase"
+          placeholder="Passphrase for this key" autocomplete="off" />
+        <span class="pgp-field__hint">
+          Used to verify the key is readable. Not stored by the add-in.
+        </span>
+      </div>
+
+      <div id="import-key-status" class="pgp-hidden pgp-mt-sm"></div>
+
+      <div class="pgp-row pgp-mt-md">
+        <button class="pgp-btn pgp-btn--primary" id="btn-import-key-confirm" style="flex:1;">
+          <span class="pgp-spinner pgp-hidden" id="import-key-spinner"></span>
+          Import Key
+        </button>
+        <button class="pgp-btn pgp-btn--secondary" id="btn-import-key-cancel">Cancel</button>
+      </div>
     </div>
 
     <!-- Generate form (hidden until triggered) -->
