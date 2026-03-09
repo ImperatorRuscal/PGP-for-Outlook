@@ -43,7 +43,6 @@ import {
   cacheSessionKey, getSessionKey, clearSessionKey,
   getSessionEmail, getSessionShortId, onSessionCleared,
 } from './js/pgp/session-cache.js';
-import { addContactKey } from './js/pgp/keyring.js';
 import { resolveRecipients, KeyStatus } from './js/pgp/key-discovery.js';
 import {
   loadOrgConfig, isCompanyKeyEnabled, isCompanyKeyRequired,
@@ -177,8 +176,6 @@ function renderRecipientList() {
       actionsHtml = `
         <button class="pgp-btn pgp-btn--secondary pgp-btn--sm btn-retry-key" data-idx="${idx}">Search</button>
         <button class="pgp-btn pgp-btn--secondary pgp-btn--sm btn-paste-key" data-idx="${idx}">Paste Key</button>`;
-    } else if (r.status !== KeyStatus.FOUND_LOCAL && r.armoredKey) {
-      actionsHtml = `<button class="pgp-btn pgp-btn--secondary pgp-btn--sm btn-save-key" data-idx="${idx}">Save to Keyring</button>`;
     }
 
     li.innerHTML = `
@@ -210,14 +207,16 @@ async function loadCompanyKeys() {
     return;
   }
 
+  // When the company key is required by IT policy the user has no choices to
+  // make here, so hide the entire section rather than showing a locked toggle.
+  if (isCompanyKeyRequired()) {
+    el('section-company-key').classList.add('pgp-hidden');
+    _companyKeys = await fetchCompanyKeys();
+    return;
+  }
+
   el('company-key-disabled').classList.add('pgp-hidden');
   el('company-key-panel').classList.remove('pgp-hidden');
-
-  // Required → disable toggle
-  if (isCompanyKeyRequired()) {
-    el('company-key-toggle').checked = true;
-    el('company-key-toggle').disabled = true;
-  }
 
   _companyKeys = await fetchCompanyKeys();
 
@@ -271,7 +270,13 @@ function loadAttachments() {
       }
 
       empty.classList.add('pgp-hidden');
-      list.innerHTML = '';
+
+      // Remove only the dynamically-added attachment items, leaving the
+      // static #attachments-empty <li> in the DOM so subsequent calls
+      // to loadAttachments() can find it via el('attachments-empty').
+      Array.from(list.children).forEach(c => {
+        if (c.id !== 'attachments-empty') c.remove();
+      });
 
       _attachments.forEach(att => {
         const li = document.createElement('li');
@@ -587,19 +592,6 @@ function wireRecipientListEvents() {
       }
     }
 
-    // Persist a WKD/VKS-discovered key into the local keyring for future use
-    if (e.target.classList.contains('btn-save-key')) {
-      const r = _recipientResults[idx];
-      if (r.armoredKey) {
-        try {
-          await addContactKey(r.email, r.armoredKey);
-          showStatus(`Key for ${r.email} saved to your keyring.`, 'success');
-          renderRecipientList();
-        } catch (err) {
-          showStatus(`Could not save key: ${err.message}`, 'error');
-        }
-      }
-    }
   });
 }
 

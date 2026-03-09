@@ -475,9 +475,19 @@ async function handleImportKey() {
 
 function refreshOrgPanel() {
   const override = getOrgOverride();
-  const config = getOrgConfig(); // eslint-disable-line no-unused-vars
 
-  if (override) {
+  // The override form must be locked when IT policy (from the domain's
+  // company-config.json) marks the company key as required.  An active
+  // manual override means IT set this up explicitly, so those controls
+  // remain editable.  Only the domain-policy case is locked.
+  const lockedByPolicy = !override && isCompanyKeyRequired();
+
+  if (lockedByPolicy) {
+    showStatus('org-status',
+      'Company key settings are enforced by your organization\'s IT policy and cannot be overridden.',
+      'warning'
+    );
+  } else if (override) {
     showStatus('org-status',
       'Using manual override. Auto-discovery from domain is skipped.',
       'warning'
@@ -497,9 +507,26 @@ function refreshOrgPanel() {
   el('org-key-enabled').checked  = isCompanyKeyEnabled();
   el('org-key-required').checked = isCompanyKeyRequired();
   el('org-key-emails').value     = getCompanyKeyEmails().join(', ');
+
+  // Disable all override controls when IT policy is enforced
+  el('org-key-enabled').disabled  = lockedByPolicy;
+  el('org-key-required').disabled = lockedByPolicy;
+  el('org-key-emails').disabled   = lockedByPolicy;
+  el('btn-save-org').disabled     = lockedByPolicy;
+  el('btn-clear-org').disabled    = lockedByPolicy;
 }
 
 async function handleSaveOrgOverride() {
+  // Defensive guard — the UI should already prevent this via disabled controls,
+  // but block programmatic or unexpected calls when IT policy is enforced.
+  if (!getOrgOverride() && isCompanyKeyRequired()) {
+    showStatus('org-save-status',
+      'Cannot save override: company key settings are enforced by IT policy.',
+      'error'
+    );
+    return;
+  }
+
   const enabled  = el('org-key-enabled').checked;
   const required = el('org-key-required').checked;
   const emailsRaw = el('org-key-emails').value;
