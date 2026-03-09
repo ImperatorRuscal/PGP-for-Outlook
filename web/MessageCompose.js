@@ -471,11 +471,20 @@ function getBodyAsync(coercionType = Office.CoercionType.Text) {
   });
 }
 
-function setBodyAsync(text) {
+function setBodyAsync(armoredText) {
+  // Wrap the PGP armor in a <pre> block so Outlook preserves line breaks.
+  // Setting CoercionType.Text in an HTML-mode compose window causes Outlook
+  // to wrap lines in <p> tags (collapsing newlines), which corrupts the armor
+  // structure and makes it undetectable when the recipient opens the message.
+  const safe = armoredText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const html = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${safe}</pre></body></html>`;
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.setAsync(
-      text,
-      { coercionType: Office.CoercionType.Text },
+      html,
+      { coercionType: Office.CoercionType.Html },
       (result) => {
         if (result.status === Office.AsyncResultStatus.Succeeded) resolve();
         else reject(new Error(result.error.message));

@@ -343,10 +343,10 @@ export async function decryptAttachment(armoredMessage, decryptionKey) {
     format: 'binary',
   });
 
-  // The embedded filename lives in the first Literal Data packet.
-  // Fall back to a generic name if it wasn't stored (shouldn't happen for
-  // files encrypted by this add-in, but handles keys from third-party clients).
-  const filename = message.packets?.[0]?.filename || 'decrypted_file';
+  // OpenPGP.js surfaces the Literal Data packet's filename on result.filename.
+  // (message.packets[0].filename refers to the *encrypted* input packet, which
+  // is never populated — the filename only becomes available after decryption.)
+  const filename = result.filename || '';
   return { data: result.data, filename };
 }
 
