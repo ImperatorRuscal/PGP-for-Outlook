@@ -550,4 +550,11 @@ Office.onReady(async () => {
   });
 
   await detectAndRenderBody();
+
+  // window.open() is not available in Outlook mobile WebViews, so the pop-out
+  // button would silently fail there.  Hide it when running on iOS or Android.
+  const platform = Office.context.diagnostics?.platform;
+  if (platform === 'Android' || platform === 'iOS') {
+    el('btn-popout-decrypted').style.display = 'none';
+  }
 });

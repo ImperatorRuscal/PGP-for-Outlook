@@ -182,6 +182,62 @@
           </ExtensionPoint>
 
         </DesktopFormFactor>
+
+        <!--
+          MobileFormFactor — enables the add-in in Outlook for Android and iOS.
+
+          IMPORTANT LIMITATIONS:
+            • Only MessageRead is supported on mobile. There is no
+              MobileMessageComposeCommandSurface, so encrypt/compose is
+              unavailable on mobile clients by Microsoft design.
+            • window.open() is not available in the mobile WebView;
+              the pop-out button is hidden automatically in MessageRead.js
+              when running on iOS/Android.
+            • Requires Mailbox ≥ 1.5 for the form factor itself; attachment
+              decryption (getAttachmentContentAsync) requires ≥ 1.8 and will
+              only appear on devices whose Outlook version meets that bar.
+            • Icons: mobile requires sizes 25, 32, 48 px. We reuse the
+              nearest existing resources (32 → 25/32, 80 → 48); Office scales.
+        -->
+        <MobileFormFactor>
+
+          <FunctionFile resid="functionFile" />
+
+          <!-- READ: Decrypt + Manage Keys buttons -->
+          <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
+            <Group id="msgReadMobileGroup">
+              <Label resid="groupLabel" />
+
+              <!-- Decrypt button -->
+              <Control xsi:type="MobileButton" id="msgReadMobileDecryptButton">
+                <Label resid="readDecryptButtonLabel" />
+                <Icon>
+                  <bt:Image size="25" resid="iconDecrypt32" />
+                  <bt:Image size="32" resid="iconDecrypt32" />
+                  <bt:Image size="48" resid="iconDecrypt80" />
+                </Icon>
+                <Action xsi:type="ShowTaskpane">
+                  <SourceLocation resid="messageReadTaskPaneUrl" />
+                </Action>
+              </Control>
+
+              <!-- Manage Keys button -->
+              <Control xsi:type="MobileButton" id="msgReadMobileKeysButton">
+                <Label resid="manageKeysButtonLabel" />
+                <Icon>
+                  <bt:Image size="25" resid="icon32" />
+                  <bt:Image size="32" resid="icon32" />
+                  <bt:Image size="48" resid="icon80" />
+                </Icon>
+                <Action xsi:type="ShowTaskpane">
+                  <SourceLocation resid="keyManagementTaskPaneUrl" />
+                </Action>
+              </Control>
+
+            </Group>
+          </ExtensionPoint>
+
+        </MobileFormFactor>
       </Host>
     </Hosts>
 
