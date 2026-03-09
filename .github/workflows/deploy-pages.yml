@@ -1,6 +1,7 @@
 # deploy-pages.yml
 # Deploys the PGP for Outlook add-in web files to GitHub Pages on every push
-# to the main / master branch.
+# to the main / master branch, and generates the PGP-for-Outlook.zip deployment
+# package for the new Outlook / unified manifest.
 #
 # After the first deployment:
 #   1. Copy the Pages URL (e.g. https://<org>.github.io/<repo>/) from
@@ -28,6 +29,8 @@ on:
     branches:
       - main
       - master
+    tags:
+      - 'v*'
   # Allow manual re-deployment from the Actions tab
   workflow_dispatch:
 
@@ -37,24 +40,21 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 jobs:
-  deploy:
-    name: Build & Deploy
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v4
+      - name: Build deployment ZIP (unified manifest)
+        run: bash manifest/build-package.sh
 
       # The web app lives in "web/".
       # We upload that directory as the Pages artifact so its contents
@@ -63,6 +63,32 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: "web"
+
+      - name: Upload ZIP as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PGP-for-Outlook
+          path: manifest/PGP-for-Outlook.zip
+          if-no-files-found: error
+
+      # Attach the ZIP to a GitHub release when a version tag (v*) is pushed
+      - name: Attach ZIP to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: manifest/PGP-for-Outlook.zip
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v4
 
       - name: Deploy to GitHub Pages
         id: deployment

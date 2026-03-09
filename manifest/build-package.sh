@@ -23,7 +23,7 @@ rm -f "$OUT_ZIP"
 zip -j "$OUT_ZIP" \
     "$SCRIPT_DIR/manifest.json" \
     "$REPO_ROOT/web/images/Icon32.png" \
-    "$REPO_ROOT/web/images/Icon80.png"
+    "$REPO_ROOT/web/images/Icon192.png"
 
 echo "Created: $OUT_ZIP"
 echo ""
