@@ -24,6 +24,12 @@ import {
   getSessionEmail, getSessionShortId, onSessionCleared,
 } from './js/pgp/session-cache.js';
 
+// ── Module state ──────────────────────────────────────────────────────────────
+
+/** Decrypted payload, stored so reply handlers can quote it. */
+let _decryptedText = null;
+let _decryptedIsHtml = false;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function el(id) { return document.getElementById(id); }
@@ -251,6 +257,9 @@ async function handleDecryptBody(encryptedBody) {
 }
 
 function renderDecryptedBody(text, signatureResult, senderEmail) {
+  _decryptedText = text;
+  _decryptedIsHtml = /^\s*<[a-zA-Z!]/.test(text);
+
   showSection('section-decrypted');
 
   // Render signature badge
@@ -358,16 +367,12 @@ function openDecryptedPopup(text, isHtml, subject = '') {
   // the host page.  Revoke after 60 s — plenty of time for the window to load.
   const blob = new Blob([html], { type: 'text/html' });
   const url  = URL.createObjectURL(blob);
-  const popup = window.open(
+  window.open(
     url, '_blank',
     'resizable=yes,width=840,height=680,scrollbars=yes,' +
     'location=no,toolbar=no,menubar=no,status=no'
   );
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-  if (!popup) {
-    showStatus('Pop-out was blocked — please allow pop-ups for this page and try again.', 'warning');
-  }
 }
 
 // ── Verify signed-only body ───────────────────────────────────────────────────
@@ -523,6 +528,58 @@ function downloadBytes(bytes, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+// ── Reply encrypted ───────────────────────────────────────────────────────────
+
+/**
+ * Open a reply (or reply-all) compose form.
+ * When the message has already been decrypted in this task pane session the
+ * decrypted text is quoted in the body, replacing the raw PGP armor that
+ * Outlook would otherwise include.  The user then clicks Encrypt in the
+ * compose ribbon before sending.
+ *
+ * @param {boolean} replyAll  - true → displayReplyAllForm, false → displayReplyForm
+ */
+function handleReplyEncrypted(replyAll) {
+  const item = Office.context.mailbox.item;
+  let quotedBody = '';
+
+  if (_decryptedText) {
+    const senderName  = item.from?.displayName  || item.from?.emailAddress || '';
+    const quoteHeader = senderName
+      ? `<br>--- Original message from ${escHtml(senderName)} ---<br>`
+      : '<br>--- Original message ---<br>';
+
+    if (_decryptedIsHtml) {
+      quotedBody =
+        `<br><div style="border-left:2px solid #888;padding-left:8px;margin-left:4px;">` +
+        quoteHeader + _decryptedText + `</div>`;
+    } else {
+      const safe = _decryptedText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+      quotedBody =
+        `<br><blockquote style="border-left:2px solid #888;padding-left:8px;margin-left:4px;">` +
+        quoteHeader + safe + `</blockquote>`;
+    }
+  }
+
+  try {
+    if (replyAll) {
+      item.displayReplyAllForm(quotedBody);
+    } else {
+      item.displayReplyForm(quotedBody);
+    }
+    showStatus(
+      'Reply opened — click <strong>Encrypt</strong> in the ribbon to encrypt before sending.',
+      'info'
+    );
+  } catch (e) {
+    showStatus(`Could not open reply: ${escHtml(e.message)}`, 'error');
+  }
+}
+
 // ── Office.js wrappers ────────────────────────────────────────────────────────
 
 function getBodyAsync(coercionType) {
@@ -537,6 +594,11 @@ function getBodyAsync(coercionType) {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 Office.onReady(async () => {
+  // Wire reply buttons regardless of key state — the user may want to reply
+  // encrypted even if they have no local key pair yet.
+  el('btn-reply-encrypted').addEventListener('click', () => handleReplyEncrypted(false));
+  el('btn-reply-all-encrypted').addEventListener('click', () => handleReplyEncrypted(true));
+
   if (!hasKeyPair()) {
     el('panel-no-key').classList.remove('pgp-hidden');
     el('detection-loading').classList.add('pgp-hidden');
@@ -554,4 +616,11 @@ Office.onReady(async () => {
   });
 
   await detectAndRenderBody();
+
+  // window.open() is not available in Outlook mobile WebViews, so the pop-out
+  // button would silently fail there.  Hide it when running on iOS or Android.
+  const platform = Office.context.diagnostics?.platform;
+  if (platform === 'Android' || platform === 'iOS') {
+    el('btn-popout-decrypted').style.display = 'none';
+  }
 });

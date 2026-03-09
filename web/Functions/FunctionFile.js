@@ -30,3 +30,33 @@ function pgpDefaultAction(event) {
   showNotification('icon16', 'Use the Encrypt or Decrypt buttons to get started.');
   event.completed();
 }
+
+/**
+ * Open a reply compose form for the current message, then prompt the user
+ * to click the Encrypt ribbon button before sending.
+ */
+function replyEncrypted(event) {
+  try {
+    Office.context.mailbox.item.displayReplyForm('');
+    showNotification('iconEncrypt16',
+      'Reply opened — click Encrypt in the ribbon to encrypt before sending.');
+  } catch (e) {
+    showNotification('icon16', 'Could not open reply: ' + e.message);
+  }
+  event.completed();
+}
+
+/**
+ * Open a reply-all compose form for the current message, then prompt the user
+ * to click the Encrypt ribbon button before sending.
+ */
+function replyAllEncrypted(event) {
+  try {
+    Office.context.mailbox.item.displayReplyAllForm('');
+    showNotification('iconEncrypt16',
+      'Reply All opened — click Encrypt in the ribbon to encrypt before sending.');
+  } catch (e) {
+    showNotification('icon16', 'Could not open reply: ' + e.message);
+  }
+  event.completed();
+}
