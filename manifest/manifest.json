@@ -1,0 +1,198 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/vDevPreview/MicrosoftTeams.schema.json",
+  "manifestVersion": "devPreview",
+  "id": "4086c384-c2b3-4932-9b97-2b4d14c4821a",
+  "version": "1.0.0",
+  "name": {
+    "short": "PGP Encryption",
+    "full": "PGP Encryption for Outlook"
+  },
+  "description": {
+    "short": "PGP encryption and key management for Outlook.",
+    "full": "PGP message encryption, decryption and key management for Outlook. Supports WKD key discovery, RSA and ECC key generation, and organisation key configuration."
+  },
+  "icons": {
+    "outline": "Icon32.png",
+    "color": "Icon80.png"
+  },
+  "developer": {
+    "name": "ImperatorRuscal",
+    "websiteUrl": "https://github.com/ImperatorRuscal/PGP-for-Outlook",
+    "privacyUrl": "https://github.com/ImperatorRuscal/PGP-for-Outlook",
+    "termsOfUseUrl": "https://github.com/ImperatorRuscal/PGP-for-Outlook"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "Mailbox.ReadWrite.User",
+          "type": "Delegated"
+        }
+      ]
+    }
+  },
+  "extensions": [
+    {
+      "requirements": {
+        "scopes": ["mail"],
+        "capabilities": [
+          {
+            "name": "Mailbox",
+            "minVersion": "1.8"
+          }
+        ]
+      },
+      "runtimes": [
+        {
+          "id": "ReadTaskPane",
+          "type": "general",
+          "code": {
+            "page": "https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageRead.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowReadPane",
+              "type": "openPage",
+              "view": "homepage"
+            }
+          ]
+        },
+        {
+          "id": "ComposeTaskPane",
+          "type": "general",
+          "code": {
+            "page": "https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageCompose.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowComposePane",
+              "type": "openPage",
+              "view": "homepage"
+            }
+          ]
+        },
+        {
+          "id": "KeyMgmtTaskPane",
+          "type": "general",
+          "code": {
+            "page": "https://ImperatorRuscal.github.io/PGP-for-Outlook/KeyManagement.html"
+          },
+          "lifetime": "short",
+          "actions": [
+            {
+              "id": "ShowKeyMgmt",
+              "type": "openPage",
+              "view": "homepage"
+            }
+          ]
+        }
+      ],
+      "ribbons": [
+        {
+          "contexts": ["mailRead"],
+          "tabs": [
+            {
+              "builtInTabId": "TabDefault",
+              "groups": [
+                {
+                  "id": "msgReadGroup",
+                  "label": "PGP Encryption",
+                  "icons": [
+                    { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
+                    { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
+                    { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                  ],
+                  "controls": [
+                    {
+                      "id": "ReadDecryptButton",
+                      "type": "button",
+                      "label": "Decrypt",
+                      "icons": [
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                      ],
+                      "supertip": {
+                        "title": "Decrypt PGP Message",
+                        "description": "Open the PGP decryption pane to decrypt this message and verify its signature."
+                      },
+                      "actionId": "ShowReadPane"
+                    },
+                    {
+                      "id": "ReadKeysButton",
+                      "type": "button",
+                      "label": "Manage Keys",
+                      "icons": [
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                      ],
+                      "supertip": {
+                        "title": "PGP Key Management",
+                        "description": "Generate or import PGP keys, manage your keyring, and configure organization settings."
+                      },
+                      "actionId": "ShowKeyMgmt"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "contexts": ["mailCompose"],
+          "tabs": [
+            {
+              "builtInTabId": "TabDefault",
+              "groups": [
+                {
+                  "id": "msgComposeGroup",
+                  "label": "PGP Encryption",
+                  "icons": [
+                    { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
+                    { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
+                    { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                  ],
+                  "controls": [
+                    {
+                      "id": "ComposeEncryptButton",
+                      "type": "button",
+                      "label": "Encrypt",
+                      "icons": [
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                      ],
+                      "supertip": {
+                        "title": "Encrypt PGP Message",
+                        "description": "Open the PGP encryption pane to encrypt this message before sending."
+                      },
+                      "actionId": "ShowComposePane"
+                    },
+                    {
+                      "id": "ComposeKeysButton",
+                      "type": "button",
+                      "label": "Manage Keys",
+                      "icons": [
+                        { "size": 16, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" },
+                        { "size": 32, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" },
+                        { "size": 80, "url": "https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" }
+                      ],
+                      "supertip": {
+                        "title": "PGP Key Management",
+                        "description": "Generate or import PGP keys, manage your keyring, and configure organization settings."
+                      },
+                      "actionId": "ShowKeyMgmt"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
