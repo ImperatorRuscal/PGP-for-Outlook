@@ -68,7 +68,7 @@ web/                                  ← Web app (host on any HTTPS server)
 └── images/                           ← Add-in icons
 
 docs/
-└── pgp-outlook-config.example.json  ← Example org config file (see below)
+└── company-config.example.json      ← Example org config file (see below)
 ```
 
 ---
@@ -262,7 +262,7 @@ a small JSON file on their domain.
 }
 ```
 
-See `docs/pgp-outlook-config.example.json` for the full documented template.
+See `docs/company-config.example.json` for the full documented template.
 
 | Field | Type | Default | Meaning |
 |-------|------|---------|---------|
@@ -272,14 +272,22 @@ See `docs/pgp-outlook-config.example.json` for the full documented template.
 
 ### Step 2: Publish it
 
-Upload the file to your web server at:
+Upload the file to your web server at one of the following paths (the add-in
+tries them in order, using the first that returns a successful response):
 
 ```
-https://<your-email-domain>/.well-known/pgp-outlook-config.json
+Primary:  https://<your-email-domain>/.well-known/pgp-for-outlook-addin/company-config.json
+Fallback: https://openpgpkey.<your-email-domain>/.well-known/pgp-for-outlook-addin/company-config.json
 ```
 
 The add-in derives the URL from the signed-in user's email domain automatically.
-For `alice@acme.com` it fetches `https://acme.com/.well-known/pgp-outlook-config.json`.
+For `alice@acme.com` it first tries
+`https://acme.com/.well-known/pgp-for-outlook-addin/company-config.json`, then
+`https://openpgpkey.acme.com/.well-known/pgp-for-outlook-addin/company-config.json`.
+
+The fallback path lets organisations that already run a WKD server on
+`openpgpkey.<domain>` co-locate the add-in config there without needing to
+publish anything at the apex domain.
 
 The file must be served without authentication.  If your add-in is hosted on a
 different origin you may need to add a CORS header:

@@ -22,8 +22,9 @@
  *    roaming settings ceiling is within 20% of being reached.
  *
  *  ORGANIZATION SETTINGS
- *    The add-in tries to load org-level config from:
- *      https://<user-email-domain>/.well-known/pgp-outlook-config.json
+ *    The add-in tries to load org-level config from (in order):
+ *      Primary:  https://<user-email-domain>/.well-known/pgp-for-outlook-addin/company-config.json
+ *      Fallback: https://openpgpkey.<user-email-domain>/.well-known/pgp-for-outlook-addin/company-config.json
  *    IT admins can enable/configure the company key feature by publishing that
  *    file.  A manual override (stored in roaming settings) takes precedence
  *    and is intended for orgs that cannot host a well-known file.
