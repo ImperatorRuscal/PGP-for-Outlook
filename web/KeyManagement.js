@@ -6,14 +6,14 @@
  * Sections:
  *
  *  MY KEY PAIR
- *    Generate a new key pair protected by a passphrase.  Two key types:
- *      - ECC (Ed25519/X25519, curve25519) — compact, fast, recommended default
- *      - RSA-4096 — legacy interoperability with older PGP clients (GnuPG < 2.1)
- *    The passphrase-encrypted private key and the public key are stored in
- *    Office roaming settings — they follow the user across devices via their
- *    Microsoft 365 account, but never leave the Office ecosystem unencrypted.
- *    The user can copy or email their public key to contacts, and can delete
- *    or regenerate the key pair at any time.
+ *    Generate a new key pair protected by a passphrase (ECC or RSA-4096), or
+ *    import an existing key from any OpenPGP-compatible client (GnuPG, Kleopatra,
+ *    Thunderbird, etc.).  The passphrase is verified against the imported key
+ *    before saving; only the already-encrypted private key blob is persisted.
+ *    Keys are stored in Office roaming settings — they follow the user across
+ *    devices via their Microsoft 365 account, but never leave the Office
+ *    ecosystem unencrypted.  The user can copy or email their public key to
+ *    contacts, download a backup, and delete or replace the key pair at any time.
  *
  *  CONTACTS' KEYRING
  *    A local store of trusted contacts' public keys, also in roaming settings.
@@ -34,7 +34,7 @@
  *        compose pane.  Default is false; the user can override per-message.
  */
 
-import { generateKeyPair, getKeyInfo } from './js/pgp/pgp-core.js';
+import { generateKeyPair, getKeyInfo, extractPublicKey, unlockPrivateKey } from './js/pgp/pgp-core.js';
 import {
   hasKeyPair, getPrivateKey, getPublicKey, getKeyMetadata,
   saveKeyPair, clearKeyPair,
@@ -244,6 +244,99 @@ async function handleDeleteKey() {
   await clearKeyPair();
   await refreshMyKeyPanel();
   showStatus('status-bar', 'Key pair deleted.', 'warning');
+}
+
+// ── Import existing private key ───────────────────────────────────────────────
+
+function showImportKeyForm() {
+  el('panel-import-key-form').classList.remove('pgp-hidden');
+  el('panel-generate-form').classList.add('pgp-hidden');
+  hideStatus('import-key-status');
+  el('import-privkey-text').focus();
+}
+
+function hideImportKeyForm() {
+  el('panel-import-key-form').classList.add('pgp-hidden');
+  el('import-privkey-text').value = '';
+  el('import-privkey-passphrase').value = '';
+  hideStatus('import-key-status');
+}
+
+/**
+ * Validate, verify, and save an existing armored private key.
+ *
+ * Steps:
+ *  1. Check the pasted text looks like a private key block (fast fail).
+ *  2. Parse the key with OpenPGP.js to catch malformed armor.
+ *  3. Unlock with the provided passphrase to verify it is correct
+ *     (wrong passphrase → clear error, key not saved).
+ *  4. Extract the armored public key from the private key object.
+ *  5. Read key metadata (fingerprint, UID, algorithm, etc.).
+ *  6. Save both keys to roaming settings, replacing any existing key pair.
+ */
+async function handleImportPrivateKey() {
+  const armoredPrivate = el('import-privkey-text').value.trim();
+  const passphrase     = el('import-privkey-passphrase').value;
+
+  if (!armoredPrivate) {
+    return showStatus('import-key-status', 'Paste your armored private key first.', 'error');
+  }
+  if (!armoredPrivate.includes('-----BEGIN PGP PRIVATE KEY BLOCK-----')) {
+    return showStatus('import-key-status',
+      'This does not look like a PGP private key. Make sure you paste the full block including the header and footer lines.',
+      'error'
+    );
+  }
+  if (!passphrase) {
+    return showStatus('import-key-status', 'Passphrase is required to verify the key.', 'error');
+  }
+
+  const btn     = el('btn-import-key-confirm');
+  const spinner = el('import-key-spinner');
+  btn.disabled  = true;
+  spinner.classList.remove('pgp-hidden');
+  showStatus('import-key-status', 'Verifying key…', 'info');
+
+  try {
+    // Step 1+2: Parse and validate the key structure.
+    // unlockPrivateKey calls readPrivateKey internally and throws for bad armor.
+    await unlockPrivateKey(armoredPrivate, passphrase);
+
+    // Step 3: Passphrase was accepted — extract the public key.
+    const armoredPublic = await extractPublicKey(armoredPrivate);
+
+    // Step 4: Read metadata.
+    const info = await getKeyInfo(armoredPublic);
+
+    // Step 5: Persist.
+    await saveKeyPair(armoredPrivate, armoredPublic, {
+      name:                 info.name,
+      email:                info.email,
+      fingerprint:          info.fingerprint,
+      fingerprintFormatted: info.fingerprintFormatted,
+      keyId:                info.keyId,
+      created:              info.created?.toISOString(),
+      expires:              info.expires?.toISOString() ?? null,
+    });
+
+    hideImportKeyForm();
+    await refreshMyKeyPanel();
+    showStatus('status-bar',
+      `Key imported: ${info.name} <${info.email}> — ${info.fingerprintFormatted}`,
+      'success'
+    );
+  } catch (e) {
+    // Provide a clearer message for the most common failure (wrong passphrase).
+    const msg = e.message?.toLowerCase() ?? '';
+    if (msg.includes('passphrase') || msg.includes('decrypt') || msg.includes('session key')) {
+      showStatus('import-key-status', 'Incorrect passphrase — please try again.', 'error');
+    } else {
+      showStatus('import-key-status', `Import failed: ${e.message}`, 'error');
+    }
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('pgp-hidden');
+  }
 }
 
 // ── Keyring panel ─────────────────────────────────────────────────────────────
@@ -460,10 +553,23 @@ Office.onReady(async () => {
 
   // Wire generate-form buttons (there are two "show-generate" buttons)
   document.querySelectorAll('#btn-show-generate').forEach(btn => {
-    btn.addEventListener('click', showGenerateForm);
+    btn.addEventListener('click', () => {
+      hideImportKeyForm();
+      showGenerateForm();
+    });
   });
   el('btn-generate-cancel').addEventListener('click', hideGenerateForm);
   el('btn-generate-confirm').addEventListener('click', handleGenerate);
+
+  // Wire import-key-form buttons (there are two "show-import-key" buttons)
+  document.querySelectorAll('#btn-show-import-key').forEach(btn => {
+    btn.addEventListener('click', () => {
+      hideGenerateForm();
+      showImportKeyForm();
+    });
+  });
+  el('btn-import-key-cancel').addEventListener('click', hideImportKeyForm);
+  el('btn-import-key-confirm').addEventListener('click', handleImportPrivateKey);
 
   el('btn-copy-pubkey')?.addEventListener('click', handleCopyPublicKey);
   el('btn-send-pubkey')?.addEventListener('click', handleSendPublicKey);

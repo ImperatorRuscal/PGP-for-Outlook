@@ -81,6 +81,23 @@ export async function readPublicKey(armoredKey) {
 }
 
 /**
+ * Extract the armored public key from an armored private key.
+ *
+ * The public-key packets inside a PGP private key are always stored in
+ * plaintext — no passphrase is needed to read the public portion.  This
+ * lets us display fingerprint/UID metadata and save the public key to
+ * roaming settings immediately after an import, without requiring the
+ * user to enter their passphrase twice.
+ *
+ * @param {string} armoredPrivateKey - Armored private key (-----BEGIN PGP PRIVATE KEY BLOCK-----)
+ * @returns {Promise<string>} Armored public key (-----BEGIN PGP PUBLIC KEY BLOCK-----)
+ */
+export async function extractPublicKey(armoredPrivateKey) {
+  const privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  return privateKey.toPublic().armor();
+}
+
+/**
  * Parse a binary public key (e.g. the raw response from a WKD lookup)
  * into a key object.
  */
