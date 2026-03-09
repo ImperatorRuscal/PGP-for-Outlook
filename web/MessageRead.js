@@ -358,16 +358,12 @@ function openDecryptedPopup(text, isHtml, subject = '') {
   // the host page.  Revoke after 60 s — plenty of time for the window to load.
   const blob = new Blob([html], { type: 'text/html' });
   const url  = URL.createObjectURL(blob);
-  const popup = window.open(
+  window.open(
     url, '_blank',
     'resizable=yes,width=840,height=680,scrollbars=yes,' +
     'location=no,toolbar=no,menubar=no,status=no'
   );
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-  if (!popup) {
-    showStatus('Pop-out was blocked — please allow pop-ups for this page and try again.', 'warning');
-  }
 }
 
 // ── Verify signed-only body ───────────────────────────────────────────────────
