@@ -3,9 +3,14 @@
  * Loads organization-level PGP configuration.
  *
  * Configuration is fetched at runtime from a well-known URL on the user's
- * email domain.  IT admins publish a static JSON file at:
+ * email domain.  IT admins publish a static JSON file at one of:
  *
- *   https://<org-domain>/.well-known/pgp-outlook-config.json
+ *   Primary:  https://<org-domain>/.well-known/pgp-for-outlook-addin/company-config.json
+ *   Fallback: https://openpgpkey.<org-domain>/.well-known/pgp-for-outlook-addin/company-config.json
+ *
+ * The fallback lets organizations that already operate a WKD server
+ * (https://openpgpkey.<domain>) co-locate the add-in config alongside
+ * their key-discovery infrastructure without needing to touch the apex domain.
  *
  * Expected schema:
  * {
@@ -51,27 +56,32 @@ export async function loadOrgConfig(userEmail) {
     return _cachedConfig;
   }
 
-  // 2. Well-known URL on the user's domain
-  try {
-    const domain = userEmail?.split('@')[1];
-    if (domain) {
-      const url = `https://${domain}/.well-known/pgp-outlook-config.json`;
-      const response = await fetch(url, {
-        // Fail fast — if the file doesn't exist we fall through to defaults
-        // rather than leaving the user waiting for a network timeout.
-        signal: AbortSignal.timeout(5000),
-        // No credentials — this file is intentionally public.  Never add
-        // 'include' here; that would send the user's cookies to the domain.
-      });
-      if (response.ok) {
-        const json = await response.json();
-        _cachedConfig = { ...DEFAULT_CONFIG, ...json };
-        return _cachedConfig;
+  // 2. Well-known URL — primary on the apex domain, fallback on openpgpkey subdomain
+  const domain = userEmail?.split('@')[1];
+  if (domain) {
+    const candidates = [
+      `https://${domain}/.well-known/pgp-for-outlook-addin/company-config.json`,
+      `https://openpgpkey.${domain}/.well-known/pgp-for-outlook-addin/company-config.json`,
+    ];
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          // Fail fast — if the file doesn't exist we try the next candidate
+          // rather than leaving the user waiting for a network timeout.
+          signal: AbortSignal.timeout(5000),
+          // No credentials — this file is intentionally public.  Never add
+          // 'include' here; that would send the user's cookies to the domain.
+        });
+        if (response.ok) {
+          const json = await response.json();
+          _cachedConfig = { ...DEFAULT_CONFIG, ...json };
+          return _cachedConfig;
+        }
+      } catch (e) {
+        // This candidate isn't available — try the next one.
+        console.info(`company-config.json not found at ${url}:`, e.message);
       }
     }
-  } catch (e) {
-    // Org may not have published a config file — that's fine.
-    console.info('pgp-outlook-config.json not found or fetch failed:', e.message);
   }
 
   // 3. Defaults (company key feature disabled)
