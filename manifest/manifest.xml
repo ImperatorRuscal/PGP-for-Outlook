@@ -71,10 +71,14 @@
   <!-- ================================================================
        Version Overrides - modern Outlook ribbon integration
        Requires Mailbox 1.8 for compose attachment access.
+
+       Structure: v1.0 outer (required by OfficeApp schema) contains all
+       desktop content. Nested v1.1 inner adds MobileFormFactor support;
+       v1.1-capable clients use the inner block exclusively.
   ================================================================ -->
   <VersionOverrides
-    xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1"
-    xsi:type="VersionOverridesV1_1">
+    xmlns="http://schemas.microsoft.com/office/mailappversionoverrides"
+    xsi:type="VersionOverridesV1_0">
 
     <Requirements>
       <bt:Sets DefaultMinVersion="1.8">
@@ -199,68 +203,9 @@
           </ExtensionPoint>
 
         </DesktopFormFactor>
-
-        <!--
-          MobileFormFactor — enables the add-in in Outlook for Android and iOS.
-
-          IMPORTANT LIMITATIONS:
-            • Only MessageRead is supported on mobile. There is no
-              MobileMessageComposeCommandSurface, so encrypt/compose is
-              unavailable on mobile clients by Microsoft design.
-            • window.open() is not available in the mobile WebView;
-              the pop-out button is hidden automatically in MessageRead.js
-              when running on iOS/Android.
-            • Requires Mailbox ≥ 1.5 for the form factor itself; attachment
-              decryption (getAttachmentContentAsync) requires ≥ 1.8 and will
-              only appear on devices whose Outlook version meets that bar.
-            • Icons: mobile requires sizes 25, 32, 48 px. We reuse the
-              nearest existing resources (32 → 25/32, 80 → 48); Office scales.
-        -->
-        <MobileFormFactor>
-
-          <FunctionFile resid="functionFile" />
-
-          <!-- READ: Decrypt + Manage Keys buttons -->
-          <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
-            <Group id="msgReadMobileGroup">
-              <Label resid="groupLabel" />
-
-              <!-- Decrypt button -->
-              <Control xsi:type="MobileButton" id="msgReadMobileDecryptButton">
-                <Label resid="readDecryptButtonLabel" />
-                <Icon>
-                  <bt:Image size="25" resid="iconDecrypt32" />
-                  <bt:Image size="32" resid="iconDecrypt32" />
-                  <bt:Image size="48" resid="iconDecrypt80" />
-                </Icon>
-                <Action xsi:type="ShowTaskpane">
-                  <SourceLocation resid="messageReadTaskPaneUrl" />
-                </Action>
-              </Control>
-
-              <!-- Manage Keys button -->
-              <Control xsi:type="MobileButton" id="msgReadMobileKeysButton">
-                <Label resid="manageKeysButtonLabel" />
-                <Icon>
-                  <bt:Image size="25" resid="icon32" />
-                  <bt:Image size="32" resid="icon32" />
-                  <bt:Image size="48" resid="icon80" />
-                </Icon>
-                <Action xsi:type="ShowTaskpane">
-                  <SourceLocation resid="keyManagementTaskPaneUrl" />
-                </Action>
-              </Control>
-
-            </Group>
-          </ExtensionPoint>
-
-        </MobileFormFactor>
       </Host>
     </Hosts>
 
-    <!-- ================================================================
-         Resource strings and URLs
-    ================================================================ -->
     <Resources>
       <bt:Images>
         <!-- General / Manage Keys – blue closed padlock -->
@@ -278,29 +223,22 @@
       </bt:Images>
 
       <bt:Urls>
-        <bt:Url id="functionFile"             DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/Functions/FunctionFile.html" />
-        <bt:Url id="messageReadTaskPaneUrl"   DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageRead.html" />
+        <bt:Url id="functionFile"              DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/Functions/FunctionFile.html" />
+        <bt:Url id="messageReadTaskPaneUrl"    DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageRead.html" />
         <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageCompose.html" />
-        <bt:Url id="keyManagementTaskPaneUrl" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/KeyManagement.html" />
+        <bt:Url id="keyManagementTaskPaneUrl"  DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/KeyManagement.html" />
       </bt:Urls>
 
       <bt:ShortStrings>
-        <!-- Group label -->
-        <bt:String id="groupLabel"                  DefaultValue="PGP Encryption" />
-
-        <!-- Read pane buttons -->
-        <bt:String id="readDecryptButtonLabel"          DefaultValue="Decrypt" />
-        <bt:String id="readDecryptSuperTipTitle"        DefaultValue="Decrypt PGP Message" />
-        <bt:String id="readReplyEncryptedButtonLabel"   DefaultValue="Reply Encrypted" />
-        <bt:String id="readReplyEncryptedSuperTipTitle" DefaultValue="Reply Encrypted" />
-
-        <!-- Compose pane buttons -->
-        <bt:String id="composeEncryptButtonLabel"   DefaultValue="Encrypt" />
-        <bt:String id="composeEncryptSuperTipTitle" DefaultValue="Encrypt PGP Message" />
-
-        <!-- Shared key management button -->
-        <bt:String id="manageKeysButtonLabel"       DefaultValue="Manage Keys" />
-        <bt:String id="manageKeysSuperTipTitle"     DefaultValue="PGP Key Management" />
+        <bt:String id="groupLabel"                   DefaultValue="PGP Encryption" />
+        <bt:String id="readDecryptButtonLabel"           DefaultValue="Decrypt" />
+        <bt:String id="readDecryptSuperTipTitle"         DefaultValue="Decrypt PGP Message" />
+        <bt:String id="readReplyEncryptedButtonLabel"    DefaultValue="Reply Encrypted" />
+        <bt:String id="readReplyEncryptedSuperTipTitle"  DefaultValue="Reply Encrypted" />
+        <bt:String id="composeEncryptButtonLabel"    DefaultValue="Encrypt" />
+        <bt:String id="composeEncryptSuperTipTitle"  DefaultValue="Encrypt PGP Message" />
+        <bt:String id="manageKeysButtonLabel"        DefaultValue="Manage Keys" />
+        <bt:String id="manageKeysSuperTipTitle"      DefaultValue="PGP Key Management" />
       </bt:ShortStrings>
 
       <bt:LongStrings>
@@ -315,5 +253,231 @@
       </bt:LongStrings>
     </Resources>
 
+    <!-- ================================================================
+         Nested v1.1 — processed by clients that support VersionOverrides 1.1.
+         Extends v1.0 desktop content with MobileFormFactor support.
+
+         MobileFormFactor LIMITATIONS:
+           • Only MessageRead is supported on mobile (no compose surface).
+           • window.open() unavailable in mobile WebView; pop-out button is
+             hidden automatically in MessageRead.js on iOS/Android.
+           • Requires Mailbox ≥ 1.5 for the form factor itself.
+           • Icons: mobile requires sizes 25, 32, 48 px (32/80 reused; Office scales).
+    ================================================================ -->
+    <VersionOverrides
+      xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1"
+      xsi:type="VersionOverridesV1_1">
+
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.8">
+          <bt:Set Name="Mailbox" />
+        </bt:Sets>
+      </Requirements>
+
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+
+            <FunctionFile resid="functionFile" />
+
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgReadGroup">
+                  <Label resid="groupLabel" />
+
+                  <Control xsi:type="Button" id="msgReadDecryptButton">
+                    <Label resid="readDecryptButtonLabel" />
+                    <Supertip>
+                      <Title resid="readDecryptSuperTipTitle" />
+                      <Description resid="readDecryptSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="iconDecrypt16" />
+                      <bt:Image size="32" resid="iconDecrypt32" />
+                      <bt:Image size="80" resid="iconDecrypt80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="messageReadTaskPaneUrl" />
+                    </Action>
+                  </Control>
+
+                  <Control xsi:type="Button" id="msgReadReplyEncryptedButton">
+                    <Label resid="readReplyEncryptedButtonLabel" />
+                    <Supertip>
+                      <Title resid="readReplyEncryptedSuperTipTitle" />
+                      <Description resid="replyEncSuperTipDesc" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="iconEncrypt16" />
+                      <bt:Image size="32" resid="iconEncrypt32" />
+                      <bt:Image size="80" resid="iconEncrypt80" />
+                    </Icon>
+                    <Action xsi:type="ExecuteFunction">
+                      <FunctionName>replyEncrypted</FunctionName>
+                    </Action>
+                  </Control>
+
+                  <Control xsi:type="Button" id="msgReadKeysButton">
+                    <Label resid="manageKeysButtonLabel" />
+                    <Supertip>
+                      <Title resid="manageKeysSuperTipTitle" />
+                      <Description resid="manageKeysSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16" />
+                      <bt:Image size="32" resid="icon32" />
+                      <bt:Image size="80" resid="icon80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="keyManagementTaskPaneUrl" />
+                    </Action>
+                  </Control>
+
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgComposeGroup">
+                  <Label resid="groupLabel" />
+
+                  <Control xsi:type="Button" id="msgComposeEncryptButton">
+                    <Label resid="composeEncryptButtonLabel" />
+                    <Supertip>
+                      <Title resid="composeEncryptSuperTipTitle" />
+                      <Description resid="compEncryptSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="iconEncrypt16" />
+                      <bt:Image size="32" resid="iconEncrypt32" />
+                      <bt:Image size="80" resid="iconEncrypt80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="messageComposeTaskPaneUrl" />
+                    </Action>
+                  </Control>
+
+                  <Control xsi:type="Button" id="msgComposeKeysButton">
+                    <Label resid="manageKeysButtonLabel" />
+                    <Supertip>
+                      <Title resid="manageKeysSuperTipTitle" />
+                      <Description resid="manageKeysSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16" />
+                      <bt:Image size="32" resid="icon32" />
+                      <bt:Image size="80" resid="icon80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="keyManagementTaskPaneUrl" />
+                    </Action>
+                  </Control>
+
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+
+          </DesktopFormFactor>
+
+          <MobileFormFactor>
+
+            <FunctionFile resid="functionFile" />
+
+            <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
+              <Group id="msgReadMobileGroup">
+                <Label resid="groupLabel" />
+
+                <Control xsi:type="MobileButton" id="msgReadMobileDecryptButton">
+                  <Label resid="readDecryptButtonLabel" />
+                  <Icon>
+                    <bt:Image size="25" scale="1" resid="iconDecrypt32" />
+                    <bt:Image size="25" scale="2" resid="iconDecrypt32" />
+                    <bt:Image size="25" scale="3" resid="iconDecrypt32" />
+                    <bt:Image size="32" scale="1" resid="iconDecrypt32" />
+                    <bt:Image size="32" scale="2" resid="iconDecrypt32" />
+                    <bt:Image size="32" scale="3" resid="iconDecrypt32" />
+                    <bt:Image size="48" scale="1" resid="iconDecrypt80" />
+                    <bt:Image size="48" scale="2" resid="iconDecrypt80" />
+                    <bt:Image size="48" scale="3" resid="iconDecrypt80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="messageReadTaskPaneUrl" />
+                  </Action>
+                </Control>
+
+                <Control xsi:type="MobileButton" id="msgReadMobileKeysButton">
+                  <Label resid="manageKeysButtonLabel" />
+                  <Icon>
+                    <bt:Image size="25" scale="1" resid="icon32" />
+                    <bt:Image size="25" scale="2" resid="icon32" />
+                    <bt:Image size="25" scale="3" resid="icon32" />
+                    <bt:Image size="32" scale="1" resid="icon32" />
+                    <bt:Image size="32" scale="2" resid="icon32" />
+                    <bt:Image size="32" scale="3" resid="icon32" />
+                    <bt:Image size="48" scale="1" resid="icon80" />
+                    <bt:Image size="48" scale="2" resid="icon80" />
+                    <bt:Image size="48" scale="3" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="keyManagementTaskPaneUrl" />
+                  </Action>
+                </Control>
+
+              </Group>
+            </ExtensionPoint>
+
+          </MobileFormFactor>
+        </Host>
+      </Hosts>
+
+      <!-- ================================================================
+           Resource strings and URLs
+      ================================================================ -->
+      <Resources>
+        <bt:Images>
+          <bt:Image id="icon16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon16.png" />
+          <bt:Image id="icon32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon32.png" />
+          <bt:Image id="icon80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/Icon80.png" />
+          <bt:Image id="iconDecrypt16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt16.png" />
+          <bt:Image id="iconDecrypt32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt32.png" />
+          <bt:Image id="iconDecrypt80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconDecrypt80.png" />
+          <bt:Image id="iconEncrypt16" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt16.png" />
+          <bt:Image id="iconEncrypt32" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt32.png" />
+          <bt:Image id="iconEncrypt80" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/images/IconEncrypt80.png" />
+        </bt:Images>
+
+        <bt:Urls>
+          <bt:Url id="functionFile"              DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/Functions/FunctionFile.html" />
+          <bt:Url id="messageReadTaskPaneUrl"    DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageRead.html" />
+          <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/MessageCompose.html" />
+          <bt:Url id="keyManagementTaskPaneUrl"  DefaultValue="https://ImperatorRuscal.github.io/PGP-for-Outlook/KeyManagement.html" />
+        </bt:Urls>
+
+        <bt:ShortStrings>
+          <bt:String id="groupLabel"                   DefaultValue="PGP Encryption" />
+          <bt:String id="readDecryptButtonLabel"           DefaultValue="Decrypt" />
+          <bt:String id="readDecryptSuperTipTitle"         DefaultValue="Decrypt PGP Message" />
+          <bt:String id="readReplyEncryptedButtonLabel"    DefaultValue="Reply Encrypted" />
+          <bt:String id="readReplyEncryptedSuperTipTitle"  DefaultValue="Reply Encrypted" />
+          <bt:String id="composeEncryptButtonLabel"    DefaultValue="Encrypt" />
+          <bt:String id="composeEncryptSuperTipTitle"  DefaultValue="Encrypt PGP Message" />
+          <bt:String id="manageKeysButtonLabel"        DefaultValue="Manage Keys" />
+          <bt:String id="manageKeysSuperTipTitle"      DefaultValue="PGP Key Management" />
+        </bt:ShortStrings>
+
+        <bt:LongStrings>
+          <bt:String id="readDecryptSuperTipDescription"
+            DefaultValue="Open the PGP decryption pane to decrypt this message and verify its signature." />
+          <bt:String id="replyEncSuperTipDesc"
+            DefaultValue="Open a reply compose window for this message. Click Encrypt in the ribbon before sending to encrypt your reply." />
+          <bt:String id="compEncryptSuperTipDescription"
+            DefaultValue="Open the PGP encryption pane to encrypt this message before sending." />
+          <bt:String id="manageKeysSuperTipDescription"
+            DefaultValue="Generate or import PGP keys, manage your keyring, and configure organization settings." />
+        </bt:LongStrings>
+      </Resources>
+
+    </VersionOverrides>
   </VersionOverrides>
 </OfficeApp>
