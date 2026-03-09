@@ -305,7 +305,8 @@ function renderDecryptedBody(text, signatureResult, senderEmail) {
   });
 
   el('btn-popout-decrypted').addEventListener('click', () => {
-    openDecryptedPopup(text, isHtml);
+    const subject = Office.context.mailbox.item?.subject || '';
+    openDecryptedPopup(text, isHtml, subject);
   });
 }
 
@@ -313,25 +314,41 @@ function renderDecryptedBody(text, signatureResult, senderEmail) {
 
 /**
  * Open decrypted content in a larger, resizable browser window.
+ *
+ * @param {string}  text     - Decrypted payload
+ * @param {boolean} isHtml   - True when the payload is HTML
+ * @param {string}  subject  - Original message subject (used as window title)
+ *
  * For HTML payloads a CSP meta tag is injected to block script execution,
  * mirroring the sandbox= restriction used by the in-pane iframe.
+ * The window title is set to "PGP Decrypted : <subject>" and browser chrome
+ * (address bar, toolbar, menu bar) is suppressed via window.open features.
+ * Note: modern browsers may still show the address bar for security reasons,
+ * but Outlook's embedded WebView typically honours these flags.
  */
-function openDecryptedPopup(text, isHtml) {
+function openDecryptedPopup(text, isHtml, subject = '') {
+  const pageTitle = subject ? `PGP Decrypted : ${subject}` : 'PGP Decrypted';
+  // Escape the title for safe insertion into HTML.
+  const safeTitle = pageTitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   let html;
   if (isHtml) {
-    // Inject Content-Security-Policy into <head> (or synthesise one) so that
-    // scripts inside the decrypted HTML cannot run in the popup window.
-    const csp = `<meta http-equiv="Content-Security-Policy" ` +
-                `content="script-src 'none'; object-src 'none';">`;
+    // Inject CSP (blocks scripts) and our window title into <head>.
+    // Any existing <title> in the decrypted HTML is replaced so the window
+    // caption always shows "PGP Decrypted : …" rather than the email's own title.
+    const inject = `<meta http-equiv="Content-Security-Policy" ` +
+                   `content="script-src 'none'; object-src 'none';">` +
+                   `<title>${safeTitle}</title>`;
     if (/<head[\s>]/i.test(text)) {
-      html = text.replace(/(<head[\s>][^>]*>)/i, `$1${csp}`);
+      // Remove any pre-existing <title> then prepend our tags after <head …>
+      const noTitle = text.replace(/<title[^>]*>[\s\S]*?<\/title>/gi, '');
+      html = noTitle.replace(/(<head[\s>][^>]*>)/i, `$1${inject}`);
     } else {
-      // No <head> — wrap content in a minimal shell with the CSP.
-      html = `<!DOCTYPE html><html><head>${csp}</head><body>${text}</body></html>`;
+      html = `<!DOCTYPE html><html><head>${inject}</head><body>${text}</body></html>`;
     }
   } else {
     const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    html = `<!DOCTYPE html><html><head><meta charset="UTF-8">` +
+    html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${safeTitle}</title>` +
       `<style>body{font-family:Calibri,Arial,sans-serif;font-size:14px;` +
       `line-height:1.6;padding:24px;white-space:pre-wrap;word-break:break-word;}</style>` +
       `</head><body>${safe}</body></html>`;
@@ -341,7 +358,11 @@ function openDecryptedPopup(text, isHtml) {
   // the host page.  Revoke after 60 s — plenty of time for the window to load.
   const blob = new Blob([html], { type: 'text/html' });
   const url  = URL.createObjectURL(blob);
-  const popup = window.open(url, '_blank', 'resizable=yes,width=840,height=680,scrollbars=yes');
+  const popup = window.open(
+    url, '_blank',
+    'resizable=yes,width=840,height=680,scrollbars=yes,' +
+    'location=no,toolbar=no,menubar=no,status=no'
+  );
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 
   if (!popup) {
