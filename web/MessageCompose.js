@@ -271,7 +271,13 @@ function loadAttachments() {
       }
 
       empty.classList.add('pgp-hidden');
-      list.innerHTML = '';
+
+      // Remove only the dynamically-added attachment items, leaving the
+      // static #attachments-empty <li> in the DOM so subsequent calls
+      // to loadAttachments() can find it via el('attachments-empty').
+      Array.from(list.children).forEach(c => {
+        if (c.id !== 'attachments-empty') c.remove();
+      });
 
       _attachments.forEach(att => {
         const li = document.createElement('li');
