@@ -118,8 +118,16 @@ function promptPassphrase(message = 'Enter your passphrase to decrypt.') {
  * by Outlook's HTML round-trip (missing blank lines, entity-encoded dashes, etc.).
  */
 function extractTextFromHtml(html) {
+  // Normalize block-level closing tags to newlines BEFORE assigning innerHTML.
+  // Outlook often wraps PGP armor lines in <p> elements; without this step,
+  // innerText sees a single run of text with no line breaks between the armor
+  // lines, producing a one-line string that looks nothing like valid PGP armor.
+  const normalized = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n');
   const div = document.createElement('div');
-  div.innerHTML = html;
+  div.innerHTML = normalized;
   // innerText respects CSS display, inserting newlines at block boundaries.
   // This preserves the blank-line separator that PGP armor requires.
   return div.innerText ?? div.textContent ?? '';
