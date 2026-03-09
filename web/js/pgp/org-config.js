@@ -1,6 +1,6 @@
 /**
  * org-config.js
- * Loads organisation-level PGP configuration.
+ * Loads organization-level PGP configuration.
  *
  * Configuration is fetched at runtime from a well-known URL on the user's
  * email domain.  IT admins publish a static JSON file at:

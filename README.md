@@ -10,12 +10,12 @@ software, plugins, or IT-managed infrastructure.
 
 | Feature | Details |
 |---------|---------|
-| **Key pair generation** | Ed25519/X25519 keys generated in-browser; private key stored passphrase-encrypted in Office roaming settings |
+| **Key pair generation** | ECC (Ed25519/X25519) or RSA-4096 keys generated in-browser; private key stored passphrase-encrypted in Office roaming settings |
 | **Key export / sharing** | Copy public key to clipboard or open a pre-filled compose window to send it |
 | **Contacts' keyring** | Store, search, and remove trusted contacts' public keys |
 | **Key discovery** | Automatic lookup via WKD → VKS (keys.openpgp.org) → manual paste |
-| **Message encryption** | Encrypts the plain-text body and replaces it with PGP armor before sending |
-| **Message signing** | Optionally signs outgoing messages so recipients can verify authorship |
+| **Message encryption** | Encrypts the message body and replaces it with PGP armor before sending |
+| **Message signing** | Optionally signs outgoing messages so recipients can verify authorship; off by default, configurable per-user and per-message |
 | **Encrypt to self** | Your own public key is always included so you can read your Sent items |
 | **Company / legal key** | Org-level key added to every encrypted message (configurable, optional or required) |
 | **Attachment encryption** | Each attachment encrypted individually to `filename.ext.pgp` |
@@ -34,7 +34,7 @@ software, plugins, or IT-managed infrastructure.
 | Office JavaScript API | Mailbox **1.8** (required for compose-side attachment access) |
 | Browser / WebView2 | Edge WebView2 or any modern browser (Chrome 90+, Firefox 90+, Safari 15+) |
 
-> **Outlook 2019 and earlier (perpetual licence):** The add-in will load in
+> **Outlook 2019 and earlier (perpetual license):** The add-in will load in
 > read mode, but compose-side attachment encryption requires Mailbox 1.8, which
 > is only available in Microsoft 365.  Message body encryption/decryption will
 > still work.
@@ -61,7 +61,7 @@ web/                                  ← Web app (host on any HTTPS server)
 │       ├── key-storage.js            ← Office roaming settings wrapper
 │       ├── keyring.js                ← Contacts' key management
 │       ├── key-discovery.js          ← WKD / VKS / keyring lookup
-│       └── org-config.js            ← Organisation-level configuration
+│       └── org-config.js            ← Organization-level configuration
 ├── css/
 │   └── pgp-addon.css                 ← Shared Fluent UI styles
 └── images/                           ← Add-in icons
@@ -145,11 +145,12 @@ out-of-band (phone call, Signal, in-person) before sending truly sensitive data
 to a new contact.
 
 ### Scope of encryption
-The add-in encrypts the **plain-text content** of the message body.  Existing
-HTML formatting in the compose window is not preserved — the body is replaced
-with PGP armor.  Subject lines, sender/recipient headers, and message metadata
-are **not** encrypted (this is a fundamental limitation of OpenPGP applied to
-email; metadata encryption requires a different transport layer entirely).
+The add-in encrypts the **HTML content** of the message body (preserving
+formatting) and replaces it with PGP armor.  When the recipient decrypts, the
+original HTML is recovered and rendered in a sandboxed iframe.  Subject lines,
+sender/recipient headers, and message metadata are **not** encrypted (this is a
+fundamental limitation of OpenPGP applied to email; metadata encryption requires
+a different transport layer entirely).
 
 ---
 
@@ -191,7 +192,7 @@ or connect it to the repository for automatic deployment.  Free tier available.
 
 #### Option C: SharePoint
 
-Host the folder as a SharePoint App Page.  Useful for organisations that want
+Host the folder as a SharePoint App Page.  Useful for organizations that want
 the add-in files inside their Microsoft 365 tenant.
 
 #### Option D: IIS / Apache / Nginx
@@ -204,12 +205,14 @@ Copy the folder to a virtual directory configured for HTTPS.
 
 ### 2. Update the manifest
 
-Open `manifest/manifest.xml` and replace every `~remoteAppUrl` with your
-hosting URL (the GitHub Pages URL, or whatever you chose in step 1).
-Do **not** include a trailing slash:
+The manifest in this repository is pre-configured to point at the GitHub Pages
+deployment for this project (`https://ImperatorRuscal.github.io/PGP-for-Outlook`).
+If you fork the project or host the `web/` folder elsewhere, open
+`manifest/manifest.xml` and update every URL accordingly.  Do **not** include a
+trailing slash:
 
 ```xml
-<!-- Replace ~remoteAppUrl throughout the manifest, e.g.: -->
+<!-- Example: update all resource URLs for a fork -->
 <bt:Url id="messageReadTaskPaneUrl"
         DefaultValue="https://your-org.github.io/your-repo/MessageRead.html"/>
 ```
@@ -217,7 +220,7 @@ Do **not** include a trailing slash:
 A quick way to do all substitutions at once (Linux / macOS):
 
 ```bash
-sed -i 's|~remoteAppUrl|https://your-org.github.io/your-repo|g' \
+sed -i 's|https://ImperatorRuscal.github.io/PGP-for-Outlook|https://your-org.github.io/your-repo|g' \
     manifest/manifest.xml
 ```
 
@@ -242,7 +245,7 @@ Or use the `New-OrganizationAddIn` PowerShell cmdlet.
 
 ---
 
-## Organisation configuration (company / legal key)
+## Organization configuration (company / legal key)
 
 IT administrators can enable the company key feature — which automatically adds
 a designated legal or compliance key to every encrypted message — by publishing
@@ -292,7 +295,7 @@ discoverable via **WKD** (preferred) or **VKS** (keys.openpgp.org).
 ### Fallback: manual override
 
 If your org cannot host a well-known file, an admin (or the user themselves)
-can set the org config manually via **Manage Keys → Organisation Settings →
+can set the org config manually via **Manage Keys → Organization Settings →
 Manual Override → Save Override**.  This stores the config in the user's own
 roaming settings and takes precedence over any well-known URL.
 
@@ -303,12 +306,17 @@ roaming settings and takes precedence over any well-known URL.
 ### Initial setup
 
 1. Open any email in Outlook and click **Manage Keys** in the ribbon.
-2. Click **Generate New Key Pair** and fill in your name, email, and a strong
-   passphrase.  Write the passphrase down somewhere safe — it cannot be
-   recovered if lost.
+2. Click **Generate New Key Pair**.
+   - Choose **ECC (Ed25519 / X25519)** unless you need to exchange keys with
+     older PGP clients (GnuPG < 2.1) — in that case choose **RSA-4096**.
+   - Fill in your name, email, and a strong passphrase.  Write the passphrase
+     down somewhere safe — it cannot be recovered if lost.
 3. Click **Copy Public Key** and share it with contacts who need to send you
    encrypted mail (email it, upload to [keys.openpgp.org](https://keys.openpgp.org),
    or publish via WKD).
+4. Optionally, go to **Personal Preferences** and enable **Sign encrypted
+   messages by default** if you want signing on for every message without
+   toggling it each time.
 
 ### Adding a contact's key
 
@@ -324,8 +332,10 @@ roaming settings and takes precedence over any well-known URL.
 1. Compose a new message and add recipients normally.
 2. Click **Encrypt** in the ribbon.
 3. The pane shows key status for each recipient.  Resolve any missing keys.
-4. Optionally leave **Sign this message** checked (recommended).
-5. Click **Encrypt Message** and enter your passphrase (required to sign).
+4. Optionally enable **Sign this message** (requires your passphrase at send
+   time).  The toggle starts in the state you set in Personal Preferences and
+   can be flipped for any individual message.
+5. Click **Encrypt Message** and enter your passphrase if signing is enabled.
 6. Click Outlook's normal **Send** button.
 
 ### Decrypting a message
@@ -342,23 +352,10 @@ Recommended enhancements not yet implemented, roughly in priority order:
 
 ### High priority
 
-**Session passphrase cache**
-Hold the unlocked private key in memory for the lifetime of a single task pane
-session (cleared when the pane closes or when `Office.onBeforeUnload` fires).
-This avoids re-entering the passphrase per attachment.  Implement as a
-module-level variable in `pgp-core.js` or a dedicated `session-cache.js`, with
-an explicit `clearSessionCache()` call on unload.
-
 **Key expiration**
 `generateKeyPair()` currently creates keys with no expiration.  Best practice
 is a 2-year default.  Add a date picker to the generate form and pass
 `keyExpirationTime` to `openpgp.generateKey()`.
-
-**Private key backup / export**
-Let users download their encrypted private key as a `.asc` file.  This is the
-only recovery option if they lose their Microsoft 365 account.  Add a
-"Download key backup" button to Key Management that calls `getPrivateKey()` and
-triggers a file download via a `Blob` URL.
 
 **Revocation certificate**
 When generating a key pair, immediately generate a revocation certificate and
@@ -386,11 +383,6 @@ fingerprint and maintain a multi-email reverse index.
 **Test suite**
 Unit tests for `pgp-core.js` (no DOM required) using Vitest or Jest.
 Integration tests for the compose/read flows using Office mock libraries.
-
-**RSA-4096 option**
-Offer RSA as an alternative key type for users who must communicate with
-organisations running GnuPG < 2.1 (pre-2015 versions that don't support
-Ed25519).
 
 **Audit log**
 For compliance environments, log encryption/decryption events (which keys,
@@ -427,7 +419,7 @@ Outlook following
 
 ## Dependencies
 
-| Library | Version | Licence | Purpose |
+| Library | Version | License | Purpose |
 |---------|---------|---------|---------|
 | [OpenPGP.js](https://openpgpjs.org/) | 5.5.0 | LGPL-3.0 | All cryptographic operations |
 | [wkd-client](https://github.com/wiktor-k/openpgp-wkd) | bundled | LGPL-3.0 | WKD key lookup |
@@ -436,7 +428,7 @@ Outlook following
 
 ---
 
-## Licence
+## License
 
 Provided as-is for evaluation and development.  See individual dependency
-licences above for third-party components.
+licenses above for third-party components.
