@@ -259,45 +259,40 @@ async function detectAndRenderBody() {
   let body = null;
   let pgpType = null;
 
-  if (_isMobile) {
-    // On mobile, CoercionType.Text is unreliable: Outlook Android can return
-    // the raw HTML (including <pre> tags), apply visual line-wrap newlines, or
-    // fail to decode HTML entities.  The HTML path with extractArmorFromHtml
-    // is structurally faithful — <pre> content is extracted via textContent
-    // (CSS-independent) and entities are decoded by the HTML parser.
-    try {
-      const htmlBody = await getBodyAsync(Office.CoercionType.Html);
-      const extracted = sanitizeArmoredText(extractArmorFromHtml(htmlBody));
-      const t = detectPgpContent(extracted);
-      if (t) { body = extracted; pgpType = t; }
-    } catch { /* fall through to text */ }
+  // Always prefer the HTML body path on all platforms.
+  //
+  // extractArmorFromHtml() handles both formats:
+  //   - <pre>-wrapped armor (set by this add-in's setBodyAsync)
+  //   - <div>-per-line armor (pasted plain text in any Outlook client)
+  //
+  // The HTML path correctly preserves the blank-line separator between armor
+  // headers and base64 payload because it inserts \n at every </div> boundary
+  // and replaces <pre> elements with their textContent (CSS-independent).
+  //
+  // CoercionType.Text is unreliable as a primary source:
+  //   - On Outlook Web it can collapse the required blank line in pasted armor,
+  //     causing openpgp.readMessage() to throw "Misformed armored text".
+  //   - On Outlook Android it can return raw HTML with tags still present, or
+  //     inject visual line-wrap newlines into base64 lines.
+  try {
+    const htmlBody = await getBodyAsync(Office.CoercionType.Html);
+    const extracted = sanitizeArmoredText(extractArmorFromHtml(htmlBody));
+    const t = detectPgpContent(extracted);
+    if (t) { body = extracted; pgpType = t; }
+  } catch { /* HTML unavailable — fall through to text */ }
 
-    if (!pgpType) {
+  // Text fallback: catches plain-text-only messages and edge cases where the
+  // HTML body is unavailable or extractArmorFromHtml misses the armor.
+  if (!pgpType) {
+    try {
       const textBody = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
       const t = detectPgpContent(textBody);
       if (t) { body = textBody; pgpType = t; }
-    }
-  } else {
-    // Desktop/webmail: CoercionType.Text is reliable as primary.
-    // HTML fallback uses extractArmorFromHtml (same <pre>-aware logic) so
-    // that both paths benefit from the textContent extraction.
-    body = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
-    pgpType = detectPgpContent(body);
-
-    if (!pgpType) {
-      try {
-        const htmlBody = await getBodyAsync(Office.CoercionType.Html);
-        const textFromHtml = sanitizeArmoredText(extractArmorFromHtml(htmlBody));
-        const t = detectPgpContent(textFromHtml);
-        if (t) { body = textFromHtml; pgpType = t; }
-      } catch { /* HTML body unavailable */ }
-    }
+    } catch { /* body completely unavailable */ }
   }
 
-  // Always extract just the first complete armor block before handing off to
-  // OpenPGP.js.  In reply threads the full body contains the reply armor at
-  // the top followed by Outlook separators ("-----Original Message-----") and
-  // the quoted original — both of which confuse openpgp.readMessage().
+  // Strip reply-thread noise (quoted originals, "-----Original Message-----"
+  // separators, etc.) so OpenPGP.js sees a single clean armor block.
   if (body && pgpType) {
     body = extractFirstArmorBlock(body);
   }
@@ -907,6 +902,10 @@ Office.onReady(async () => {
   if (_isMobile) {
     el('reply-desktop-hint').classList.add('pgp-hidden');
     el('reply-mobile-hint').classList.remove('pgp-hidden');
+  } else {
+    // On desktop and OWA the ribbon's "Reply Encrypted" button handles this;
+    // the in-pane reply section is only needed on mobile.
+    hideSection('section-reply');
   }
 
   // Wire reply buttons regardless of key state — the user may want to reply
