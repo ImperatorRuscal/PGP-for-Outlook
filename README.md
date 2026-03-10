@@ -76,17 +76,17 @@ docs/
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────┐
 │                      Outlook ribbon                          │
 │  [ Encrypt ]  [ Decrypt ]  [ Manage Keys ]                   │
 └────────┬───────────────┬──────────────┬──────────────────────┘
          │               │              │
     Compose          Read pane      Key Mgmt
     task pane        task pane      task pane
-         │               │              │
+         │               │               │
          └───────┬────────┘              │
                  │                       │
-         ┌───────▼───────────────────────▼────────┐
+         ┌───────▼───────────────────────▼─────────┐
          │           Shared JS modules             │
          │  pgp-core ─ key-storage ─ keyring       │
          │  key-discovery ─ org-config             │
