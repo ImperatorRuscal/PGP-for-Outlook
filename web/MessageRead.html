@@ -99,9 +99,15 @@
   ══════════════════════════════════════════════════════════ -->
   <section class="pgp-section" id="section-reply">
     <div class="pgp-section-title">Reply</div>
-    <p style="font-size:12px;color:#605e5c;margin:0 0 8px;">
+    <!-- Desktop hint — hidden on mobile by JS -->
+    <p id="reply-desktop-hint" style="font-size:12px;color:#605e5c;margin:0 0 8px;">
       Open a reply compose window. After it opens, click <strong>Encrypt</strong>
       in the ribbon to encrypt before sending.
+    </p>
+    <!-- Mobile hint — shown on mobile by JS -->
+    <p id="reply-mobile-hint" class="pgp-hidden" style="font-size:12px;color:#605e5c;margin:0 0 8px;">
+      Compose your reply below and tap <strong>Encrypt &amp; Open Reply</strong> to
+      encrypt it before the compose window opens.
     </p>
     <div class="pgp-row" style="gap:8px;">
       <button class="pgp-btn pgp-btn--primary" style="flex:1;" id="btn-reply-encrypted">
@@ -111,6 +117,30 @@
         title="Reply All Encrypted">
         Reply All
       </button>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════
+       MOBILE INLINE COMPOSE
+       Shown instead of the ribbon-encrypt flow on iOS/Android
+       because Outlook mobile has no compose add-in surface.
+  ══════════════════════════════════════════════════════════ -->
+  <section class="pgp-section pgp-hidden" id="section-mobile-compose">
+    <div class="pgp-section-title">Compose Encrypted Reply</div>
+    <div id="mobile-compose-key-status" class="pgp-hidden"
+      style="font-size:12px;color:#605e5c;margin-bottom:6px;"></div>
+    <textarea id="mobile-compose-body"
+      style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #8a8886;
+             border-radius:2px;font-size:13px;font-family:inherit;resize:vertical;
+             min-height:120px;"
+      placeholder="Type your reply here…"></textarea>
+    <div id="mobile-compose-status" class="pgp-hidden" style="margin-top:6px;"></div>
+    <div class="pgp-row" style="gap:8px;margin-top:8px;">
+      <button class="pgp-btn pgp-btn--primary" style="flex:1;" id="btn-mobile-encrypt-send">
+        <span class="pgp-spinner pgp-hidden" id="mobile-encrypt-spinner"></span>
+        Encrypt &amp; Open Reply
+      </button>
+      <button class="pgp-btn pgp-btn--secondary" id="btn-mobile-compose-cancel">Cancel</button>
     </div>
   </section>
 
