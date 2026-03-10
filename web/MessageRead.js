@@ -465,6 +465,13 @@ function renderDecryptedBody(text, signatureResult, senderEmail) {
  * (address bar, toolbar, menu bar) is suppressed via window.open features.
  * Note: modern browsers may still show the address bar for security reasons,
  * but Outlook's embedded WebView typically honours these flags.
+ *
+ * We write the HTML directly via document.write() rather than a Blob URL.
+ * Blob URL navigation is blocked in Outlook Desktop's WebView2 host: Windows
+ * intercepts the blob: protocol at the OS level and shows "Get an app to open
+ * this 'blob' link".  Writing to a blank window bypasses that restriction and
+ * also avoids the UTF-8 encoding ambiguity that caused apostrophes and other
+ * non-ASCII characters to render as mojibake (â€™ etc.) in OWA.
  */
 function openDecryptedPopup(text, isHtml, subject = '') {
   const pageTitle = subject ? `PGP Decrypted : ${subject}` : 'PGP Decrypted';
@@ -473,10 +480,13 @@ function openDecryptedPopup(text, isHtml, subject = '') {
 
   let html;
   if (isHtml) {
-    // Inject CSP (blocks scripts) and our window title into <head>.
-    // Any existing <title> in the decrypted HTML is replaced so the window
-    // caption always shows "PGP Decrypted : …" rather than the email's own title.
-    const inject = `<meta http-equiv="Content-Security-Policy" ` +
+    // Inject charset declaration, CSP (blocks scripts), and our window title
+    // into <head>.  charset must come first so the parser uses UTF-8 from the
+    // very beginning of the document.  Any existing <title> is removed so the
+    // window caption always shows "PGP Decrypted : …" rather than the email's
+    // own title.
+    const inject = `<meta charset="UTF-8">` +
+                   `<meta http-equiv="Content-Security-Policy" ` +
                    `content="script-src 'none'; object-src 'none';">` +
                    `<title>${safeTitle}</title>`;
     if (/<head[\s>]/i.test(text)) {
@@ -494,16 +504,16 @@ function openDecryptedPopup(text, isHtml, subject = '') {
       `</head><body>${safe}</body></html>`;
   }
 
-  // Use a Blob URL to avoid document.write and to work with strict CSPs on
-  // the host page.  Revoke after 60 s — plenty of time for the window to load.
-  const blob = new Blob([html], { type: 'text/html' });
-  const url  = URL.createObjectURL(blob);
-  window.open(
-    url, '_blank',
+  const win = window.open(
+    '', '_blank',
     'resizable=yes,width=840,height=680,scrollbars=yes,' +
     'location=no,toolbar=no,menubar=no,status=no'
   );
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  if (win) {
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  }
 }
 
 // ── Verify signed-only body ───────────────────────────────────────────────────
