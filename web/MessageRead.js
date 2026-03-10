@@ -124,6 +124,47 @@ function promptPassphrase(message = 'Enter your passphrase to decrypt.') {
 // ── Message body detection ────────────────────────────────────────────────────
 
 /**
+ * Normalise an armoured PGP text block that may have been mangled by Outlook
+ * on Android / iOS or by HTML-to-text conversion.
+ *
+ * Known mutations introduced by Outlook mobile:
+ *  - Non-breaking hyphens (U+2011), en/em dashes (U+2013/2014), figure dash
+ *    (U+2012), horizontal bar (U+2015), minus sign (U+2212) replacing the five
+ *    ASCII hyphens that delimit -----BEGIN/END PGP …----- headers.
+ *  - Soft hyphens (U+00AD) inserted invisibly inside lines.
+ *  - Non-breaking spaces (U+00A0) replacing ordinary spaces in header lines.
+ *  - Zero-width characters (U+200B–U+200F, U+FEFF, U+2028, U+2029) injected
+ *    between lines or at line boundaries.
+ *  - Windows line endings (CRLF) or bare CR mixed with LF.
+ *  - Trailing whitespace left on individual lines.
+ */
+function sanitizeArmoredText(text) {
+  if (!text) return text;
+
+  // Replace every visually-similar dash/hyphen with ASCII hyphen-minus U+002D.
+  text = text
+    .replace(/\u00AD/g, '')    // soft hyphen — invisible, just remove it
+    .replace(/[\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-'); // dashes → -
+
+  // Non-breaking space → regular space (appears in armor header lines).
+  text = text.replace(/\u00A0/g, ' ');
+
+  // Strip zero-width and Unicode line/paragraph separators that Outlook mobile
+  // injects and that OpenPGP.js rejects as malformed armor.
+  text = text.replace(/[\u200B-\u200F\uFEFF\u2028\u2029]/g, '');
+
+  // Normalise line endings to LF, then trim trailing whitespace per line.
+  text = text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map(line => line.trimEnd())
+    .join('\n');
+
+  return text;
+}
+
+/**
  * Extract the plain text from an HTML string by rendering it into a temporary
  * element and reading innerText.  This decodes HTML entities and inserts line
  * breaks at block-level elements, faithfully recreating what a reader would see.
@@ -147,8 +188,8 @@ function extractTextFromHtml(html) {
 }
 
 async function detectAndRenderBody() {
-  // Primary: read as plain text.
-  let body = await getBodyAsync(Office.CoercionType.Text);
+  // Primary: read as plain text, then sanitise Unicode mangling from mobile.
+  let body = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
   let pgpType = detectPgpContent(body);
 
   // Fallback: if no PGP markers found in the text body, try the HTML body.
@@ -158,7 +199,7 @@ async function detectAndRenderBody() {
   if (!pgpType) {
     try {
       const htmlBody = await getBodyAsync(Office.CoercionType.Html);
-      const textFromHtml = extractTextFromHtml(htmlBody);
+      const textFromHtml = sanitizeArmoredText(extractTextFromHtml(htmlBody));
       const pgpTypeFromHtml = detectPgpContent(textFromHtml);
       if (pgpTypeFromHtml) {
         body = textFromHtml;
