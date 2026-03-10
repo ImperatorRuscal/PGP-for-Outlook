@@ -190,25 +190,69 @@ function extractTextFromHtml(html) {
 /**
  * Extract PGP armor text from an HTML body string.
  *
- * Outlook on Android stores the PGP-encrypted body inside a <pre> element
- * (set by setBodyAsync in MessageCompose.js).  Using pre.textContent is more
- * reliable than innerText on mobile WebViews because:
- *  - textContent is not influenced by CSS (no visual word-wrapping newlines)
- *  - The browser HTML parser decodes HTML entities (&amp; → &, etc.) before
- *    we read textContent, so no manual entity-decoding is needed
- *  - It works correctly on detached DOM nodes in all WebView versions
+ * Strategy:
+ *  1. Pre-process block-level tags → \n so line structure survives innerText.
+ *  2. Replace every <pre> element with a plain text node containing its
+ *     textContent.  textContent is unaffected by CSS (no white-space:pre-wrap
+ *     wrapping), which is critical on Android WebView.  The text node inherits
+ *     the surrounding block newlines, so line integrity is preserved.
+ *  3. Run innerText on the modified div to get the full text with correct
+ *     newlines at all block boundaries.
  *
- * Falls back to the general extractTextFromHtml() path if no <pre> element
- * with PGP content is found (e.g. the sender used a different PGP client).
+ * Falls back gracefully for messages from non-add-in senders (no <pre> wrapper).
  */
 function extractArmorFromHtml(html) {
   const div = document.createElement('div');
-  div.innerHTML = html;
+  div.innerHTML = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n');
   for (const pre of div.querySelectorAll('pre')) {
-    const text = pre.textContent || '';
-    if (detectPgpContent(text)) return text;
+    pre.parentNode.replaceChild(document.createTextNode(pre.textContent), pre);
   }
-  return extractTextFromHtml(html);
+  return div.innerText ?? div.textContent ?? '';
+}
+
+/**
+ * Extract the first complete PGP armor block from a body string.
+ *
+ * In reply threads the full body contains:
+ *  - The reply's armor (pasted by the user, at the top)
+ *  - Outlook-added separators like "-----Original Message-----"
+ *  - The quoted original message (may contain a second PGP armor block)
+ *
+ * "-----Original Message-----" has the same -----…----- format as a PGP
+ * armor header.  If OpenPGP.js sees it while scanning for the END marker it
+ * throws "Unknown ASCII armor type" (or tries to parse a second block).
+ *
+ * This function isolates just the first BEGIN…END block so that
+ * openpgp.readMessage() receives a clean, unambiguous input.
+ *
+ * PGP SIGNED MESSAGE is handled as a special case: its structure is
+ *   -----BEGIN PGP SIGNED MESSAGE-----
+ *   …plaintext…
+ *   -----BEGIN PGP SIGNATURE-----
+ *   …
+ *   -----END PGP SIGNATURE-----
+ * (there is no -----END PGP SIGNED MESSAGE-----)
+ *
+ * Returns the original text unchanged when no complete armor block is found
+ * so the caller can still attempt decryption with whatever it has.
+ */
+function extractFirstArmorBlock(text) {
+  const beginMatch = text.match(/-----BEGIN PGP ([A-Z ]+?)-----/);
+  if (!beginMatch) return text;
+
+  const type   = beginMatch[1]; // e.g. "MESSAGE", "SIGNED MESSAGE"
+  const endStr = type === 'SIGNED MESSAGE'
+    ? '-----END PGP SIGNATURE-----'
+    : `-----END PGP ${type}-----`;
+
+  const startIdx = text.indexOf(beginMatch[0]);
+  const endIdx   = text.indexOf(endStr, startIdx);
+  if (endIdx === -1) return text; // incomplete armor — let OpenPGP.js report the error
+
+  return text.slice(startIdx, endIdx + endStr.length);
 }
 
 async function detectAndRenderBody() {
@@ -218,9 +262,9 @@ async function detectAndRenderBody() {
   if (_isMobile) {
     // On mobile, CoercionType.Text is unreliable: Outlook Android can return
     // the raw HTML (including <pre> tags), apply visual line-wrap newlines, or
-    // fail to decode HTML entities.  The HTML path with pre.textContent is
-    // structurally faithful — entities are decoded by the HTML parser and
-    // textContent is unaffected by CSS rendering width.
+    // fail to decode HTML entities.  The HTML path with extractArmorFromHtml
+    // is structurally faithful — <pre> content is extracted via textContent
+    // (CSS-independent) and entities are decoded by the HTML parser.
     try {
       const htmlBody = await getBodyAsync(Office.CoercionType.Html);
       const extracted = sanitizeArmoredText(extractArmorFromHtml(htmlBody));
@@ -234,19 +278,28 @@ async function detectAndRenderBody() {
       if (t) { body = textBody; pgpType = t; }
     }
   } else {
-    // Desktop: CoercionType.Text is reliable; HTML is a fallback for senders
-    // whose clients wrap armor in HTML without a plain-text alternative.
+    // Desktop/webmail: CoercionType.Text is reliable as primary.
+    // HTML fallback uses extractArmorFromHtml (same <pre>-aware logic) so
+    // that both paths benefit from the textContent extraction.
     body = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
     pgpType = detectPgpContent(body);
 
     if (!pgpType) {
       try {
         const htmlBody = await getBodyAsync(Office.CoercionType.Html);
-        const textFromHtml = sanitizeArmoredText(extractTextFromHtml(htmlBody));
+        const textFromHtml = sanitizeArmoredText(extractArmorFromHtml(htmlBody));
         const t = detectPgpContent(textFromHtml);
         if (t) { body = textFromHtml; pgpType = t; }
       } catch { /* HTML body unavailable */ }
     }
+  }
+
+  // Always extract just the first complete armor block before handing off to
+  // OpenPGP.js.  In reply threads the full body contains the reply armor at
+  // the top followed by Outlook separators ("-----Original Message-----") and
+  // the quoted original — both of which confuse openpgp.readMessage().
+  if (body && pgpType) {
+    body = extractFirstArmorBlock(body);
   }
 
   el('detection-loading').classList.add('pgp-hidden');
