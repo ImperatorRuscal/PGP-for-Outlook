@@ -39,6 +39,17 @@ function _isWeakKeyError(err) {
 }
 
 /**
+ * Returns true when the error is the self-signature validation failure that
+ * OpenPGP.js v5 throws for old DSA/ElGamal keys whose self-signatures use
+ * SHA-1 — a hash algorithm that is in config.rejectHashAlgorithms by default.
+ */
+function _isLegacySelfSigError(err) {
+  const msg = err?.message ?? '';
+  return msg.includes('Could not find valid self-signature') ||
+         msg.includes('self-signature');
+}
+
+/**
  * Build a one-off OpenPGP.js config that removes ElGamal (RFC 4880 algo 16)
  * from the rejection list so we can encrypt to legacy DSA+ElGamal keys.
  * All other config values remain at their defaults.
@@ -50,6 +61,42 @@ function _buildPermissiveConfig() {
   const rejectSet = new Set(openpgp.config?.rejectPublicKeyAlgorithms ?? []);
   rejectSet.delete(elgamalId);
   return { rejectPublicKeyAlgorithms: rejectSet };
+}
+
+/**
+ * Build a one-off OpenPGP.js config suitable for READING legacy DSA/ElGamal
+ * private keys.
+ *
+ * Old DSA keys self-sign with SHA-1 (hash algorithm 2).  OpenPGP.js v5 rejects
+ * SHA-1 by default (it is in config.rejectHashAlgorithms) because SHA-1 is
+ * cryptographically weak for new signatures.  However, self-signatures on
+ * pre-existing keys cannot be changed without re-signing the key, and SHA-1
+ * is still structurally sound enough to identify the key owner during import.
+ *
+ * This config:
+ *   - Removes SHA-1 from the rejected hash algorithm set so that
+ *     readPrivateKey / readKey can validate SHA-1 self-signatures.
+ *   - Removes DSA (17) and ElGamal (16) from the rejected public-key algorithm
+ *     set so those key types are not rejected before parsing completes.
+ *
+ * IMPORTANT: This config is used ONLY for key reading/import operations, never
+ * for creating new signatures or encrypting new messages.  New cryptographic
+ * operations on legacy keys (signing, encryption) still use the restrictive
+ * default config, which ensures no new SHA-1 signatures are created.
+ */
+function _buildLegacyKeyReadConfig() {
+  const sha1Id    = openpgp.enums?.hash?.sha1           ?? 2;
+  const dsaId     = openpgp.enums?.publicKey?.dsa       ?? 17;
+  const elgamalId = openpgp.enums?.publicKey?.elgamal   ?? 16;
+
+  const rejectHashes = new Set(openpgp.config?.rejectHashAlgorithms    ?? []);
+  const rejectPK     = new Set(openpgp.config?.rejectPublicKeyAlgorithms ?? []);
+
+  rejectHashes.delete(sha1Id);
+  rejectPK.delete(dsaId);
+  rejectPK.delete(elgamalId);
+
+  return { rejectHashAlgorithms: rejectHashes, rejectPublicKeyAlgorithms: rejectPK };
 }
 
 // ── Key generation ────────────────────────────────────────────────────────────
@@ -120,7 +167,16 @@ export async function readPublicKey(armoredKey) {
  * @returns {Promise<string>} Armored public key (-----BEGIN PGP PUBLIC KEY BLOCK-----)
  */
 export async function extractPublicKey(armoredPrivateKey) {
-  const privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  let privateKey;
+  try {
+    privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  } catch (err) {
+    if (!_isLegacySelfSigError(err)) throw err;
+    privateKey = await openpgp.readPrivateKey({
+      armoredKey: armoredPrivateKey,
+      config: _buildLegacyKeyReadConfig(),
+    });
+  }
   return privateKey.toPublic().armor();
 }
 
@@ -147,7 +203,19 @@ export async function readPublicKeyFromBinary(binaryKey) {
  * @throws If the passphrase is wrong or the armored text is corrupt
  */
 export async function unlockPrivateKey(armoredPrivateKey, passphrase) {
-  const privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  // Attempt standard (strict) parsing first.  If it fails because the key
+  // carries a SHA-1 self-signature (common on old DSA/ElGamal keys), retry
+  // with a legacy config that permits SHA-1 for key-reading purposes only.
+  let privateKey;
+  try {
+    privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  } catch (err) {
+    if (!_isLegacySelfSigError(err)) throw err;
+    privateKey = await openpgp.readPrivateKey({
+      armoredKey: armoredPrivateKey,
+      config: _buildLegacyKeyReadConfig(),
+    });
+  }
   return await openpgp.decryptKey({ privateKey, passphrase });
 }
 
@@ -173,8 +241,25 @@ export async function unlockPrivateKey(armoredPrivateKey, passphrase) {
  * }}
  */
 export async function getKeyInfo(armoredKey) {
-  const key = await openpgp.readKey({ armoredKey });
-  const primaryUser = await key.getPrimaryUser();
+  // Legacy DSA/ElGamal keys self-sign with SHA-1.  Try strict parsing first;
+  // if it fails with a self-signature error, fall back to the legacy config
+  // so we can still surface the key's metadata (UID, fingerprint, etc.).
+  let key;
+  try {
+    key = await openpgp.readKey({ armoredKey });
+  } catch (err) {
+    if (!_isLegacySelfSigError(err)) throw err;
+    key = await openpgp.readKey({ armoredKey, config: _buildLegacyKeyReadConfig() });
+  }
+
+  let primaryUser;
+  try {
+    primaryUser = await key.getPrimaryUser();
+  } catch (err) {
+    if (!_isLegacySelfSigError(err)) throw err;
+    // getPrimaryUser validates self-signatures; retry with legacy config.
+    primaryUser = await key.getPrimaryUser(undefined, undefined, _buildLegacyKeyReadConfig());
+  }
 
   // getExpirationTime() returns the JS Date of the earliest binding-signature
   // expiry, or Infinity if no expiry is set on any valid signature.

@@ -249,6 +249,15 @@ async function handleDeleteKey() {
 
 // ── Import existing private key ───────────────────────────────────────────────
 
+/**
+ * Holds parsed key data between the initial import attempt and the user's
+ * confirmation of the legacy-key warning.  Cleared whenever the import form
+ * is closed or the legacy warning is dismissed.
+ *
+ * @type {{ armoredPrivate: string, armoredPublic: string, info: object } | null}
+ */
+let _pendingLegacyImport = null;
+
 function showImportKeyForm() {
   el('panel-import-key-form').classList.remove('pgp-hidden');
   el('panel-generate-form').classList.add('pgp-hidden');
@@ -257,10 +266,31 @@ function showImportKeyForm() {
 }
 
 function hideImportKeyForm() {
+  _pendingLegacyImport = null;
   el('panel-import-key-form').classList.add('pgp-hidden');
   el('import-privkey-text').value = '';
   el('import-privkey-passphrase').value = '';
   hideStatus('import-key-status');
+  el('import-legacy-warning').classList.add('pgp-hidden');
+  el('import-key-buttons').classList.remove('pgp-hidden');
+}
+
+/**
+ * Save a key pair (both armored strings + metadata object) to roaming settings.
+ * Extracted as a helper so it is shared between the normal and legacy-confirm paths.
+ */
+async function _doSaveImport(armoredPrivate, armoredPublic, info) {
+  await saveKeyPair(armoredPrivate, armoredPublic, {
+    name:                 info.name,
+    email:                info.email,
+    fingerprint:          info.fingerprint,
+    fingerprintFormatted: info.fingerprintFormatted,
+    keyId:                info.keyId,
+    created:              info.created?.toISOString(),
+    expires:              info.expires?.toISOString() ?? null,
+  });
+  hideImportKeyForm();
+  await refreshMyKeyPanel();
 }
 
 /**
@@ -273,7 +303,9 @@ function hideImportKeyForm() {
  *     (wrong passphrase → clear error, key not saved).
  *  4. Extract the armored public key from the private key object.
  *  5. Read key metadata (fingerprint, UID, algorithm, etc.).
- *  6. Save both keys to roaming settings, replacing any existing key pair.
+ *  6. If the key is a legacy DSA/ElGamal type, show the security warning panel
+ *     and pause — the user must explicitly confirm before the key is saved.
+ *  7. Otherwise, save both keys to roaming settings immediately.
  */
 async function handleImportPrivateKey() {
   const armoredPrivate = el('import-privkey-text').value.trim();
@@ -299,29 +331,33 @@ async function handleImportPrivateKey() {
   showStatus('import-key-status', 'Verifying key…', 'info');
 
   try {
-    // Step 1+2: Parse and validate the key structure.
-    // unlockPrivateKey calls readPrivateKey internally and throws for bad armor.
+    // Steps 1+2+3: Parse and unlock.  unlockPrivateKey automatically falls
+    // back to a permissive config for legacy DSA/ElGamal keys that have
+    // SHA-1 self-signatures; the fallback is transparent here.
     await unlockPrivateKey(armoredPrivate, passphrase);
 
-    // Step 3: Passphrase was accepted — extract the public key.
+    // Step 4: Extract the public key (also fallback-aware for legacy keys).
     const armoredPublic = await extractPublicKey(armoredPrivate);
 
-    // Step 4: Read metadata.
+    // Step 5: Read metadata.
     const info = await getKeyInfo(armoredPublic);
 
-    // Step 5: Persist.
-    await saveKeyPair(armoredPrivate, armoredPublic, {
-      name:                 info.name,
-      email:                info.email,
-      fingerprint:          info.fingerprint,
-      fingerprintFormatted: info.fingerprintFormatted,
-      keyId:                info.keyId,
-      created:              info.created?.toISOString(),
-      expires:              info.expires?.toISOString() ?? null,
-    });
+    // Step 6: Detect legacy DSA/ElGamal keys and require explicit confirmation.
+    // DSA is the primary key algorithm for the classic DSA+ElGamal key type;
+    // OpenPGP.js reports it as algorithm 'dsa' from the key packet.
+    const isLegacy = info.algorithm === 'dsa' || info.algorithm === 'elgamal';
 
-    hideImportKeyForm();
-    await refreshMyKeyPanel();
+    if (isLegacy) {
+      // Store the parsed data and let the user read the warning before saving.
+      _pendingLegacyImport = { armoredPrivate, armoredPublic, info };
+      el('import-key-buttons').classList.add('pgp-hidden');
+      el('import-legacy-warning').classList.remove('pgp-hidden');
+      hideStatus('import-key-status');
+      return; // save deferred to handleConfirmLegacyImport
+    }
+
+    // Step 7: Save immediately for non-legacy keys.
+    await _doSaveImport(armoredPrivate, armoredPublic, info);
     showStatus('status-bar',
       `Key imported: ${info.name} <${info.email}> — ${info.fingerprintFormatted}`,
       'success'
@@ -337,6 +373,34 @@ async function handleImportPrivateKey() {
   } finally {
     btn.disabled = false;
     spinner.classList.add('pgp-hidden');
+  }
+}
+
+/**
+ * Called when the user clicks "I understand — import anyway" on the legacy
+ * key warning panel.  Saves the key pair that was validated in
+ * handleImportPrivateKey and stored in _pendingLegacyImport.
+ */
+async function handleConfirmLegacyImport() {
+  if (!_pendingLegacyImport) return;
+  const { armoredPrivate, armoredPublic, info } = _pendingLegacyImport;
+
+  const btn     = el('btn-import-legacy-confirm');
+  btn.disabled  = true;
+
+  try {
+    await _doSaveImport(armoredPrivate, armoredPublic, info);
+    showStatus('status-bar',
+      `Legacy key imported: ${info.name} <${info.email}> — ${info.fingerprintFormatted}. ` +
+      `Consider generating a new ECC key for stronger security.`,
+      'warning'
+    );
+  } catch (e) {
+    el('import-legacy-warning').classList.add('pgp-hidden');
+    el('import-key-buttons').classList.remove('pgp-hidden');
+    showStatus('import-key-status', `Import failed: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -598,6 +662,13 @@ Office.onReady(async () => {
   });
   el('btn-import-key-cancel').addEventListener('click', hideImportKeyForm);
   el('btn-import-key-confirm').addEventListener('click', handleImportPrivateKey);
+  el('btn-import-legacy-confirm').addEventListener('click', handleConfirmLegacyImport);
+  el('btn-import-legacy-cancel').addEventListener('click', () => {
+    _pendingLegacyImport = null;
+    el('import-legacy-warning').classList.add('pgp-hidden');
+    el('import-key-buttons').classList.remove('pgp-hidden');
+    hideStatus('import-key-status');
+  });
 
   el('btn-copy-pubkey')?.addEventListener('click', handleCopyPublicKey);
   el('btn-send-pubkey')?.addEventListener('click', handleSendPublicKey);
