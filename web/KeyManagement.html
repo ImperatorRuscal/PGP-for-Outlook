@@ -69,8 +69,9 @@
     <div id="panel-import-key-form" class="pgp-hidden" style="margin-top:12px;border-top:1px solid #edebe9;padding-top:12px;">
       <div class="pgp-section-title" style="margin-bottom:6px;">Import Existing Private Key</div>
       <p style="font-size:12px;color:#605e5c;margin:0 0 10px 0;">
-        Paste your armored private key block below.  RSA, ECC, and other
-        OpenPGP-compatible key types are all supported.  Your passphrase is
+        Paste your armored private key block below.  RSA, ECC, DSA/ElGamal, and
+        other OpenPGP-compatible key types are all accepted.  Legacy DSA/ElGamal
+        keys will display a security advisory before saving.  Your passphrase is
         required to verify the key is readable — it will not be stored.
       </p>
 
@@ -91,7 +92,40 @@
 
       <div id="import-key-status" class="pgp-hidden pgp-mt-sm"></div>
 
-      <div class="pgp-row pgp-mt-md">
+      <!-- Legacy key warning — shown when a DSA/ElGamal key is detected -->
+      <div id="import-legacy-warning" class="pgp-hidden pgp-mt-sm"
+           style="border:1px solid #c8a900;background:#fffbe6;border-radius:3px;padding:10px 12px;">
+        <div style="font-weight:600;margin-bottom:6px;">⚠ Legacy DSA/ElGamal key detected</div>
+        <p style="font-size:12px;color:#3b3a39;margin:0 0 8px;">
+          This key uses DSA for signing and ElGamal for encryption — algorithms from
+          the mid-1990s that are no longer recommended.  Specific concerns:
+        </p>
+        <ul style="font-size:12px;color:#3b3a39;margin:0 0 8px;padding-left:18px;">
+          <li>Self-signatures use <strong>SHA-1</strong>, which is considered weak against
+              collision attacks for new signatures.</li>
+          <li><strong>DSA</strong> key strength is limited by the DSA parameter size
+              (typically 1024-bit group order, equivalent to ~80-bit security).</li>
+          <li><strong>ElGamal</strong> encryption is unpadded and not IND-CCA2 secure
+              without careful implementation.</li>
+        </ul>
+        <p style="font-size:12px;color:#3b3a39;margin:0 0 10px;">
+          The add-in will decrypt messages sent to this key, but
+          <strong>new messages will not be signed</strong> with it because creating new
+          DSA/SHA-1 signatures is blocked by the underlying cryptographic library.
+          It is strongly recommended to generate a new ECC or RSA-4096 key and share
+          the new public key with your contacts.
+        </p>
+        <div class="pgp-row" style="gap:8px;">
+          <button class="pgp-btn pgp-btn--danger pgp-btn--sm" id="btn-import-legacy-confirm">
+            I understand — import anyway
+          </button>
+          <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-import-legacy-cancel">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div class="pgp-row pgp-mt-md" id="import-key-buttons">
         <button class="pgp-btn pgp-btn--primary" id="btn-import-key-confirm" style="flex:1;">
           <span class="pgp-spinner pgp-hidden" id="import-key-spinner"></span>
           Import Key
