@@ -20,10 +20,12 @@ software, plugins, or IT-managed infrastructure.
 | **Encrypt to self** | Your own public key is always included so you can read your Sent items |
 | **Company / legal key** | Org-level key added to every encrypted message (configurable, optional or required) |
 | **Attachment encryption** | Each attachment encrypted individually to `filename.ext.pgp` |
-| **Message decryption** | Detects and decrypts PGP-encrypted message bodies |
+| **Message decryption** | Detects and decrypts PGP-encrypted message bodies; works on desktop, OWA, and Outlook mobile |
 | **Attachment decryption** | One-click decrypt and download for `.pgp` attachments |
 | **Signature verification** | Verifies inline signatures against the local keyring or WKD |
 | **Signed-only messages** | Displays and verifies PGP cleartext-signed messages |
+| **Mobile encrypted reply** | On iOS/Android (where compose add-ins are unavailable), encrypts the reply in-pane and copies the armor to the clipboard for pasting into a normal Outlook reply |
+| **Session key cache** | Unlocked private key cached in memory for 15 minutes; passphrase is never stored |
 
 ---
 
@@ -127,13 +129,15 @@ settings; the plaintext private key material exists in browser memory only
 during the brief window of a single encrypt/decrypt/sign operation.
 
 ### Passphrase handling
-The passphrase is entered by the user on **every operation** and is never
-cached — not in memory between operations, not in sessionStorage, not anywhere.
-This means a compromised browser session cannot reuse an unlocked key.
+The passphrase unlocks the private key once per session.  The **unlocked key
+object** is held in browser memory for up to 15 minutes of inactivity, then
+discarded automatically.  The passphrase itself is **never retained** after the
+unlock step — only the derived in-memory key object is cached.
 
-If you need better UX with acceptable trade-offs (e.g. for a low-risk
-internal environment), see the [Roadmap](#roadmap) section for session-caching
-guidance.
+The session can be locked at any time with the **Lock** button in the read pane.
+Navigating away from a message or closing the task pane also clears the cache
+because the in-memory state is not persisted to sessionStorage or any other
+durable store.
 
 ### Key discovery trust
 Keys discovered automatically from WKD or VKS are shown with their source

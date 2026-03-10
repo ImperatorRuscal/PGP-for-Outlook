@@ -34,8 +34,6 @@ let _decryptedIsHtml = false;
 /** True when running inside Outlook on iOS or Android. */
 let _isMobile = false;
 
-/** Tracks whether the pending mobile compose is a reply-all. */
-let _mobileReplyAll = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -162,29 +160,6 @@ function sanitizeArmoredText(text) {
     .join('\n');
 
   return text;
-}
-
-/**
- * Extract the plain text from an HTML string by rendering it into a temporary
- * element and reading innerText.  This decodes HTML entities and inserts line
- * breaks at block-level elements, faithfully recreating what a reader would see.
- * Used as a fallback when the plain-text body from Office.js has been mangled
- * by Outlook's HTML round-trip (missing blank lines, entity-encoded dashes, etc.).
- */
-function extractTextFromHtml(html) {
-  // Normalize block-level closing tags to newlines BEFORE assigning innerHTML.
-  // Outlook often wraps PGP armor lines in <p> elements; without this step,
-  // innerText sees a single run of text with no line breaks between the armor
-  // lines, producing a one-line string that looks nothing like valid PGP armor.
-  const normalized = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n');
-  const div = document.createElement('div');
-  div.innerHTML = normalized;
-  // innerText respects CSS display, inserting newlines at block boundaries.
-  // This preserves the blank-line separator that PGP armor requires.
-  return div.innerText ?? div.textContent ?? '';
 }
 
 /**
@@ -689,19 +664,24 @@ function downloadBytes(bytes, filename) {
 /**
  * Entry point for both reply buttons.
  *
- * Desktop: opens a compose window and asks the user to click Encrypt in the
- * ribbon (the compose add-in is available there).
+ * Desktop / OWA: opens a compose window pre-filled with the quoted decrypted
+ * body (if available) and asks the user to click Encrypt in the ribbon.
+ * `displayReplyForm` / `displayReplyAllForm` are available on these platforms.
  *
- * Mobile: Outlook mobile has no compose add-in surface, so opening a blank
- * reply and saying "click Encrypt in the ribbon" does nothing.  Instead we
- * show an inline compose area inside this task pane, encrypt the text here,
- * and pass the already-encrypted PGP armor to displayReplyForm().
+ * Mobile: `displayReplyForm` and `displayReplyAllForm` are explicitly listed as
+ * unsupported on Outlook iOS/Android in the Office.js docs.  Instead, the
+ * in-pane compose section (`section-mobile-compose`) is shown.  The user types
+ * their reply, taps "Encrypt Reply", and the armor is placed in a read-only
+ * textarea and auto-copied to the clipboard.  They then start a normal reply in
+ * Outlook and paste the armor as the message body.
  *
- * @param {boolean} replyAll  - true → displayReplyAllForm, false → displayReplyForm
+ * Note: on mobile, Reply and Reply All produce the same in-pane compose
+ * experience — the distinction is not meaningful without a real compose window.
+ *
+ * @param {boolean} replyAll  - true → displayReplyAllForm on desktop (ignored on mobile)
  */
 function handleReplyEncrypted(replyAll) {
   if (_isMobile) {
-    _mobileReplyAll = replyAll;
     openMobileCompose();
     return;
   }
