@@ -607,6 +607,16 @@ function handleReplyEncrypted(replyAll) {
 function openMobileCompose() {
   const textarea = el('mobile-compose-body');
   const statusEl = el('mobile-compose-status');
+
+  // Reset to write mode in case a previous encryption result is still showing.
+  textarea.readOnly = false;
+  textarea.style.fontFamily = '';
+  textarea.style.fontSize = '';
+  el('mobile-compose-title').textContent = 'Compose Encrypted Reply';
+  el('mobile-copy-instructions').classList.add('pgp-hidden');
+  el('btn-mobile-encrypt-send').classList.remove('pgp-hidden');
+  el('btn-mobile-copy-armor').classList.add('pgp-hidden');
+  el('btn-mobile-copy-armor').textContent = 'Copy';
   statusEl.classList.add('pgp-hidden');
 
   if (_decryptedText && !_decryptedIsHtml) {
@@ -644,8 +654,15 @@ function openMobileCompose() {
 }
 
 /**
- * Encrypt the text typed in the mobile compose textarea, then open the reply
- * form with the PGP-armored ciphertext pre-filled.  The user just taps Send.
+ * Encrypt the text typed in the mobile compose textarea.
+ *
+ * NOTE: displayReplyForm / displayReplyAllForm are explicitly listed as
+ * unsupported on Outlook mobile in the Office.js docs.  There is no API that
+ * opens a pre-filled compose window from a read-mode task pane on mobile.
+ *
+ * Instead we encrypt the text here in the task pane, replace the textarea with
+ * the PGP armor (read-only), and expose a Copy button.  The user taps Copy,
+ * starts a reply manually in Outlook, and pastes the armor as the body.
  *
  * Recipient keys: sender's public key (discovered via keyring / WKD / VKS) +
  * the user's own public key (encrypt-to-self so sent mail is readable).
@@ -678,7 +695,7 @@ async function handleMobileEncryptReply() {
     if (!senderEmail) {
       throw new Error('Cannot determine the sender\'s email address.');
     }
-    const { key: senderKey, status } = await discoverKey(senderEmail);
+    const { key: senderKey } = await discoverKey(senderEmail);
     if (!senderKey) {
       statusEl.innerHTML =
         `No public key found for <strong>${escHtml(senderEmail)}</strong>. ` +
@@ -702,15 +719,29 @@ async function handleMobileEncryptReply() {
     // ── Encrypt ────────────────────────────────────────────────────────────
     const armor = await encryptMessage(text, recipientKeys, signingKey);
 
-    // ── Open the pre-encrypted reply form ──────────────────────────────────
-    if (_mobileReplyAll) {
-      item.displayReplyAllForm(armor);
-    } else {
-      item.displayReplyForm(armor);
-    }
+    // ── Show result + Copy button ───────────────────────────────────────────
+    // displayReplyForm/displayReplyAllForm are not supported on Outlook mobile.
+    // Show the armor in the (now read-only) textarea and let the user copy it.
+    textarea.value = armor;
+    textarea.readOnly = true;
+    textarea.style.fontFamily = 'monospace';
+    textarea.style.fontSize = '11px';
 
-    hideSection('section-mobile-compose');
-    showStatus('Encrypted reply opened — review it and tap Send.', 'info');
+    el('mobile-compose-title').textContent = 'Encrypted Reply Ready';
+    el('mobile-compose-key-status').classList.add('pgp-hidden');
+    el('mobile-copy-instructions').classList.remove('pgp-hidden');
+    btn.classList.add('pgp-hidden');
+    el('btn-mobile-copy-armor').classList.remove('pgp-hidden');
+
+    // Attempt auto-copy so the user just needs to paste.
+    try {
+      await navigator.clipboard.writeText(armor);
+      statusEl.textContent = 'Copied! Start a reply in Outlook and paste as the message body.';
+      statusEl.className = 'pgp-alert pgp-alert--info';
+      statusEl.classList.remove('pgp-hidden');
+    } catch {
+      // Clipboard API unavailable — user will tap the Copy button manually.
+    }
 
   } catch (e) {
     statusEl.textContent = `Encryption failed: ${e.message}`;
@@ -752,7 +783,31 @@ Office.onReady(async () => {
 
   // Mobile inline compose buttons.
   el('btn-mobile-encrypt-send').addEventListener('click', handleMobileEncryptReply);
-  el('btn-mobile-compose-cancel').addEventListener('click', () => hideSection('section-mobile-compose'));
+  el('btn-mobile-copy-armor').addEventListener('click', async () => {
+    const armor = el('mobile-compose-body').value;
+    try {
+      await navigator.clipboard.writeText(armor);
+      el('btn-mobile-copy-armor').textContent = 'Copied!';
+      setTimeout(() => { el('btn-mobile-copy-armor').textContent = 'Copy'; }, 2000);
+    } catch {
+      // Clipboard API blocked — user must long-press the textarea to copy manually.
+    }
+  });
+  el('btn-mobile-compose-cancel').addEventListener('click', () => {
+    // Reset compose section back to write mode for next use.
+    const textarea = el('mobile-compose-body');
+    textarea.value = '';
+    textarea.readOnly = false;
+    textarea.style.fontFamily = '';
+    textarea.style.fontSize = '';
+    el('mobile-compose-title').textContent = 'Compose Encrypted Reply';
+    el('mobile-copy-instructions').classList.add('pgp-hidden');
+    el('btn-mobile-encrypt-send').classList.remove('pgp-hidden');
+    el('btn-mobile-copy-armor').classList.add('pgp-hidden');
+    el('btn-mobile-copy-armor').textContent = 'Copy';
+    el('mobile-compose-status').classList.add('pgp-hidden');
+    hideSection('section-mobile-compose');
+  });
 
   if (!hasKeyPair()) {
     el('panel-no-key').classList.remove('pgp-hidden');
