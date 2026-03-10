@@ -188,29 +188,50 @@ function extractTextFromHtml(html) {
 }
 
 /**
- * Extract PGP armor text from an HTML body string.
+ * Extract text from an HTML body string for PGP armor detection.
  *
- * Strategy:
- *  1. Pre-process block-level tags → \n so line structure survives innerText.
- *  2. Replace every <pre> element with a plain text node containing its
- *     textContent.  textContent is unaffected by CSS (no white-space:pre-wrap
- *     wrapping), which is critical on Android WebView.  The text node inherits
- *     the surrounding block newlines, so line integrity is preserved.
- *  3. Run innerText on the modified div to get the full text with correct
- *     newlines at all block boundaries.
+ * Handles two storage formats:
  *
- * Falls back gracefully for messages from non-add-in senders (no <pre> wrapper).
+ *   <pre>-wrapped  — set by this add-in's setBodyAsync().  Uses node.textContent
+ *                    which is CSS-independent and preserves all original newlines
+ *                    regardless of white-space:pre-wrap on mobile.
+ *
+ *   <div>-per-line — pasted plain text in any Outlook client (each line is a
+ *                    separate <div>).  The recursive walk appends \n after each
+ *                    block-level element to reconstruct line structure.
+ *
+ * Does NOT use innerText.  innerText requires a rendered (attached) element to
+ * compute layout; on a detached div it silently collapses all whitespace in
+ * non-pre contexts, corrupting the base64 payload.  The recursive walk below
+ * handles both <pre> and <div>-per-line content correctly without CSS layout.
  */
 function extractArmorFromHtml(html) {
   const div = document.createElement('div');
-  div.innerHTML = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n');
-  for (const pre of div.querySelectorAll('pre')) {
-    pre.parentNode.replaceChild(document.createTextNode(pre.textContent), pre);
+  div.innerHTML = html;
+
+  const BLOCK = new Set([
+    'div', 'p', 'li', 'blockquote', 'tr',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'article', 'section', 'header', 'footer', 'html', 'body',
+  ]);
+
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+    if (tag === 'pre') {
+      // textContent is CSS-independent: gives the raw text with original \n
+      // characters regardless of white-space:pre-wrap on mobile WebViews.
+      return '\n' + node.textContent + '\n';
+    }
+    let text = '';
+    for (const child of node.childNodes) text += walk(child);
+    if (BLOCK.has(tag)) text += '\n';
+    return text;
   }
-  return div.innerText ?? div.textContent ?? '';
+
+  return walk(div);
 }
 
 /**
