@@ -187,26 +187,65 @@ function extractTextFromHtml(html) {
   return div.innerText ?? div.textContent ?? '';
 }
 
-async function detectAndRenderBody() {
-  // Primary: read as plain text, then sanitise Unicode mangling from mobile.
-  let body = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
-  let pgpType = detectPgpContent(body);
+/**
+ * Extract PGP armor text from an HTML body string.
+ *
+ * Outlook on Android stores the PGP-encrypted body inside a <pre> element
+ * (set by setBodyAsync in MessageCompose.js).  Using pre.textContent is more
+ * reliable than innerText on mobile WebViews because:
+ *  - textContent is not influenced by CSS (no visual word-wrapping newlines)
+ *  - The browser HTML parser decodes HTML entities (&amp; → &, etc.) before
+ *    we read textContent, so no manual entity-decoding is needed
+ *  - It works correctly on detached DOM nodes in all WebView versions
+ *
+ * Falls back to the general extractTextFromHtml() path if no <pre> element
+ * with PGP content is found (e.g. the sender used a different PGP client).
+ */
+function extractArmorFromHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  for (const pre of div.querySelectorAll('pre')) {
+    const text = pre.textContent || '';
+    if (detectPgpContent(text)) return text;
+  }
+  return extractTextFromHtml(html);
+}
 
-  // Fallback: if no PGP markers found in the text body, try the HTML body.
-  // When Outlook sends an HTML-format email the plain-text rendition can lose
-  // blank lines, entity-encode dashes, or otherwise mangle the PGP armor so
-  // that the -----BEGIN marker is no longer a literal substring.
-  if (!pgpType) {
+async function detectAndRenderBody() {
+  let body = null;
+  let pgpType = null;
+
+  if (_isMobile) {
+    // On mobile, CoercionType.Text is unreliable: Outlook Android can return
+    // the raw HTML (including <pre> tags), apply visual line-wrap newlines, or
+    // fail to decode HTML entities.  The HTML path with pre.textContent is
+    // structurally faithful — entities are decoded by the HTML parser and
+    // textContent is unaffected by CSS rendering width.
     try {
       const htmlBody = await getBodyAsync(Office.CoercionType.Html);
-      const textFromHtml = sanitizeArmoredText(extractTextFromHtml(htmlBody));
-      const pgpTypeFromHtml = detectPgpContent(textFromHtml);
-      if (pgpTypeFromHtml) {
-        body = textFromHtml;
-        pgpType = pgpTypeFromHtml;
-      }
-    } catch {
-      // HTML body unavailable — stick with what we have.
+      const extracted = sanitizeArmoredText(extractArmorFromHtml(htmlBody));
+      const t = detectPgpContent(extracted);
+      if (t) { body = extracted; pgpType = t; }
+    } catch { /* fall through to text */ }
+
+    if (!pgpType) {
+      const textBody = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
+      const t = detectPgpContent(textBody);
+      if (t) { body = textBody; pgpType = t; }
+    }
+  } else {
+    // Desktop: CoercionType.Text is reliable; HTML is a fallback for senders
+    // whose clients wrap armor in HTML without a plain-text alternative.
+    body = sanitizeArmoredText(await getBodyAsync(Office.CoercionType.Text));
+    pgpType = detectPgpContent(body);
+
+    if (!pgpType) {
+      try {
+        const htmlBody = await getBodyAsync(Office.CoercionType.Html);
+        const textFromHtml = sanitizeArmoredText(extractTextFromHtml(htmlBody));
+        const t = detectPgpContent(textFromHtml);
+        if (t) { body = textFromHtml; pgpType = t; }
+      } catch { /* HTML body unavailable */ }
     }
   }
 
