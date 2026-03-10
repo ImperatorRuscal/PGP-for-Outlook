@@ -83,7 +83,7 @@ docs/
          │               │              │
     Compose          Read pane      Key Mgmt
     task pane        task pane      task pane
-         │               │               │
+         │                │              │
          └───────┬────────┘              │
                  │                       │
          ┌───────▼───────────────────────▼─────────┐
