@@ -15,8 +15,9 @@ import {
   unlockPrivateKey,
   decryptMessage, decryptAttachment,
   detectPgpContent,
+  encryptMessage, readPublicKey,
 } from './js/pgp/pgp-core.js';
-import { hasKeyPair, getPrivateKey } from './js/pgp/key-storage.js';
+import { hasKeyPair, getPrivateKey, getPublicKey, getSignDefault } from './js/pgp/key-storage.js';
 import { getContactKeyObject } from './js/pgp/keyring.js';
 import { discoverKey, KeyStatus } from './js/pgp/key-discovery.js';
 import {
@@ -29,6 +30,12 @@ import {
 /** Decrypted payload, stored so reply handlers can quote it. */
 let _decryptedText = null;
 let _decryptedIsHtml = false;
+
+/** True when running inside Outlook on iOS or Android. */
+let _isMobile = false;
+
+/** Tracks whether the pending mobile compose is a reply-all. */
+let _mobileReplyAll = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -531,15 +538,26 @@ function downloadBytes(bytes, filename) {
 // ── Reply encrypted ───────────────────────────────────────────────────────────
 
 /**
- * Open a reply (or reply-all) compose form.
- * When the message has already been decrypted in this task pane session the
- * decrypted text is quoted in the body, replacing the raw PGP armor that
- * Outlook would otherwise include.  The user then clicks Encrypt in the
- * compose ribbon before sending.
+ * Entry point for both reply buttons.
+ *
+ * Desktop: opens a compose window and asks the user to click Encrypt in the
+ * ribbon (the compose add-in is available there).
+ *
+ * Mobile: Outlook mobile has no compose add-in surface, so opening a blank
+ * reply and saying "click Encrypt in the ribbon" does nothing.  Instead we
+ * show an inline compose area inside this task pane, encrypt the text here,
+ * and pass the already-encrypted PGP armor to displayReplyForm().
  *
  * @param {boolean} replyAll  - true → displayReplyAllForm, false → displayReplyForm
  */
 function handleReplyEncrypted(replyAll) {
+  if (_isMobile) {
+    _mobileReplyAll = replyAll;
+    openMobileCompose();
+    return;
+  }
+
+  // ── Desktop flow ──────────────────────────────────────────────────────────
   const item = Office.context.mailbox.item;
   let quotedBody = '';
 
@@ -580,6 +598,130 @@ function handleReplyEncrypted(replyAll) {
   }
 }
 
+// ── Mobile inline compose ─────────────────────────────────────────────────────
+
+/**
+ * Show the inline compose section, pre-populated with a plain-text quote of
+ * the already-decrypted body (if available) so the user sees context.
+ */
+function openMobileCompose() {
+  const textarea = el('mobile-compose-body');
+  const statusEl = el('mobile-compose-status');
+  statusEl.classList.add('pgp-hidden');
+
+  if (_decryptedText && !_decryptedIsHtml) {
+    const item = Office.context.mailbox.item;
+    const senderName = item.from?.displayName || item.from?.emailAddress || '';
+    const header = senderName
+      ? `\n\n--- Original message from ${senderName} ---\n`
+      : '\n\n--- Original message ---\n';
+    textarea.value = header + _decryptedText;
+    // Position cursor at the very top so the user types above the quote.
+    textarea.setSelectionRange(0, 0);
+    textarea.scrollTop = 0;
+  } else {
+    textarea.value = '';
+  }
+
+  // Show whether signing will be applied.
+  const keyStatusEl = el('mobile-compose-key-status');
+  if (getSessionKey()) {
+    if (getSignDefault()) {
+      keyStatusEl.textContent =
+        `Will sign with cached key · ${getSessionEmail() || ''}`;
+    } else {
+      keyStatusEl.textContent = 'Message will be encrypted (signing is off by default).';
+    }
+  } else {
+    keyStatusEl.textContent =
+      'Message will be encrypted without a signature ' +
+      '(decrypt the incoming message first to cache your key for signing).';
+  }
+  keyStatusEl.classList.remove('pgp-hidden');
+
+  showSection('section-mobile-compose');
+  textarea.focus();
+}
+
+/**
+ * Encrypt the text typed in the mobile compose textarea, then open the reply
+ * form with the PGP-armored ciphertext pre-filled.  The user just taps Send.
+ *
+ * Recipient keys: sender's public key (discovered via keyring / WKD / VKS) +
+ * the user's own public key (encrypt-to-self so sent mail is readable).
+ * Signing: applied only when the user's key is already unlocked in the session
+ * cache AND signing is their stored default — no extra passphrase prompt needed.
+ */
+async function handleMobileEncryptReply() {
+  const textarea  = el('mobile-compose-body');
+  const btn       = el('btn-mobile-encrypt-send');
+  const spinner   = el('mobile-encrypt-spinner');
+  const statusEl  = el('mobile-compose-status');
+
+  const text = textarea.value.trim();
+  if (!text) {
+    statusEl.textContent = 'Please type a reply before encrypting.';
+    statusEl.className = 'pgp-alert pgp-alert--warning';
+    statusEl.classList.remove('pgp-hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  spinner.classList.remove('pgp-hidden');
+  statusEl.classList.add('pgp-hidden');
+
+  try {
+    const item        = Office.context.mailbox.item;
+    const senderEmail = item.from?.emailAddress;
+
+    // ── Discover the sender's public key ───────────────────────────────────
+    if (!senderEmail) {
+      throw new Error('Cannot determine the sender\'s email address.');
+    }
+    const { key: senderKey, status } = await discoverKey(senderEmail);
+    if (!senderKey) {
+      statusEl.innerHTML =
+        `No public key found for <strong>${escHtml(senderEmail)}</strong>. ` +
+        `Ask them to share their public key, or have them publish it via ` +
+        `WKD / keys.openpgp.org, then try again.`;
+      statusEl.className = 'pgp-alert pgp-alert--error';
+      statusEl.classList.remove('pgp-hidden');
+      return;
+    }
+
+    // ── Build recipient list (sender + self) ───────────────────────────────
+    const recipientKeys = [senderKey];
+    const ownArmoredPub = getPublicKey();
+    if (ownArmoredPub) {
+      try { recipientKeys.push(await readPublicKey(ownArmoredPub)); } catch { /* skip */ }
+    }
+
+    // ── Optional signing (session key must already be cached) ──────────────
+    const signingKey = (getSessionKey() && getSignDefault()) ? getSessionKey() : null;
+
+    // ── Encrypt ────────────────────────────────────────────────────────────
+    const armor = await encryptMessage(text, recipientKeys, signingKey);
+
+    // ── Open the pre-encrypted reply form ──────────────────────────────────
+    if (_mobileReplyAll) {
+      item.displayReplyAllForm(armor);
+    } else {
+      item.displayReplyForm(armor);
+    }
+
+    hideSection('section-mobile-compose');
+    showStatus('Encrypted reply opened — review it and tap Send.', 'info');
+
+  } catch (e) {
+    statusEl.textContent = `Encryption failed: ${e.message}`;
+    statusEl.className = 'pgp-alert pgp-alert--error';
+    statusEl.classList.remove('pgp-hidden');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('pgp-hidden');
+  }
+}
+
 // ── Office.js wrappers ────────────────────────────────────────────────────────
 
 function getBodyAsync(coercionType) {
@@ -594,10 +736,23 @@ function getBodyAsync(coercionType) {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 Office.onReady(async () => {
+  // Detect mobile early so the reply section description is correct.
+  const platform = Office.context.diagnostics?.platform;
+  _isMobile = platform === 'Android' || platform === 'iOS';
+
+  if (_isMobile) {
+    el('reply-desktop-hint').classList.add('pgp-hidden');
+    el('reply-mobile-hint').classList.remove('pgp-hidden');
+  }
+
   // Wire reply buttons regardless of key state — the user may want to reply
   // encrypted even if they have no local key pair yet.
   el('btn-reply-encrypted').addEventListener('click', () => handleReplyEncrypted(false));
   el('btn-reply-all-encrypted').addEventListener('click', () => handleReplyEncrypted(true));
+
+  // Mobile inline compose buttons.
+  el('btn-mobile-encrypt-send').addEventListener('click', handleMobileEncryptReply);
+  el('btn-mobile-compose-cancel').addEventListener('click', () => hideSection('section-mobile-compose'));
 
   if (!hasKeyPair()) {
     el('panel-no-key').classList.remove('pgp-hidden');
@@ -617,10 +772,8 @@ Office.onReady(async () => {
 
   await detectAndRenderBody();
 
-  // window.open() is not available in Outlook mobile WebViews, so the pop-out
-  // button would silently fail there.  Hide it when running on iOS or Android.
-  const platform = Office.context.diagnostics?.platform;
-  if (platform === 'Android' || platform === 'iOS') {
+  // window.open() is not available in Outlook mobile WebViews.
+  if (_isMobile) {
     el('btn-popout-decrypted').style.display = 'none';
   }
 });
