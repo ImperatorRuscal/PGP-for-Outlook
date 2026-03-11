@@ -98,18 +98,17 @@ async function refreshMyKeyPanel() {
       el('key-status-badge').textContent = 'Expired';
     }
 
-    // Show algorithm badge and "Add Modern Subkeys" button for weak/legacy key types.
-    // DSA/ElGamal is the classic legacy type; also flag any other algorithm that is
-    // not one of the modern ECC or RSA-4096 types.
-    const legacyAlgos = new Set(['dsa', 'elgamal', 'rsa', 'rsa_encrypt_sign', 'rsa_encrypt', 'rsa_sign']);
+    // Show algorithm badge and "Add Modern Subkeys" button for non-ECC primary key types.
+    // Covers DSA/ElGamal (weak) and RSA (any key size — ECC is universally preferred).
     const primaryAlgo = (meta.algorithm || '').toLowerCase();
-    const isLegacyAlgo = legacyAlgos.has(primaryAlgo) && primaryAlgo !== 'rsa'; // RSA is strong enough
-    // Specifically flag DSA and ElGamal as legacy
-    const isWeakAlgo = primaryAlgo === 'dsa' || primaryAlgo === 'elgamal';
+    const isNonEccAlgo = ['dsa', 'elgamal', 'rsa', 'rsa_encrypt_sign', 'rsa_encrypt', 'rsa_sign']
+      .includes(primaryAlgo);
 
-    if (isWeakAlgo) {
-      el('key-algorithm-badge').textContent =
-        `⚠ ${meta.algorithm?.toUpperCase() ?? 'Legacy'} key — weak algorithm`;
+    if (isNonEccAlgo) {
+      const badgeLabel = (primaryAlgo === 'dsa' || primaryAlgo === 'elgamal')
+        ? `⚠ ${meta.algorithm?.toUpperCase() ?? 'Legacy'} key — weak algorithm`
+        : `${meta.algorithm?.toUpperCase() ?? 'RSA'} key — ECC subkeys recommended`;
+      el('key-algorithm-badge').textContent = badgeLabel;
       el('key-legacy-row').classList.remove('pgp-hidden');
 
       // Check whether modern subkeys have already been added, then show/hide
@@ -117,11 +116,7 @@ async function refreshMyKeyPanel() {
       const armoredPublic = getPublicKey();
       if (armoredPublic) {
         hasModernSubkeys(armoredPublic).then(alreadyModern => {
-          if (alreadyModern) {
-            el('panel-add-subkeys-trigger').classList.add('pgp-hidden');
-          } else {
-            el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
-          }
+          el('panel-add-subkeys-trigger').classList.toggle('pgp-hidden', alreadyModern);
         }).catch(() => {
           // On error, show the button anyway — addModernSubkeys will handle it
           el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
