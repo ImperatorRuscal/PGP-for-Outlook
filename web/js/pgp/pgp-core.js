@@ -404,9 +404,11 @@ export async function addModernSubkeys(armoredPrivateKey, passphrase) {
     // primary-key-binding back-signature (0x19) made by the subkey itself.
     const dataForEd25519 = { key: dsaPrimaryPkt, bind: ed25519SubkeyPkt };
 
-    // Back-signature (0x19) — signed by the Ed25519 subkey
+    // Back-signature (0x19) — signed by the Ed25519 subkey.
+    // RFC 4880 calls this "Primary Key Binding"; OpenPGP.js exposes it as
+    // enums.signature.keyBinding (0x19) — there is no primaryKeyBinding key.
     const ed25519BackSig = new openpgp.SignaturePacket();
-    ed25519BackSig.signatureType = openpgp.enums.signature.primaryKeyBinding;
+    ed25519BackSig.signatureType = openpgp.enums.signature.keyBinding;
     ed25519BackSig.hashAlgorithm = openpgp.enums.hash.sha256;
     await ed25519BackSig.sign(ed25519SubkeyPkt, dataForEd25519, date);
 
