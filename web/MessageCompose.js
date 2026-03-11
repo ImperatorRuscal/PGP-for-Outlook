@@ -542,11 +542,30 @@ function reconcileInlineAttachments(bodyHtml) {
     _inlineAttachments = [..._inlineAttachments, ...reclassified];
   }
 
-  // 2. Add sentinel entries for CIDs that have no matching attachment at all.
+  // 2. For CIDs that have no matching attachment by exact id, try matching by
+  //    name prefix.  Outlook CIDs are typically "filename.ext@domain-part", so
+  //    the part before the first "@" often matches the attachment's name field.
+  //    This covers the common OWA case where the API returns isInline=false and
+  //    assigns a short numeric id (e.g. "1") that doesn't match the body CID.
   const knownIds = new Set(_inlineAttachments.map(a => a.id));
   for (const cid of cidRefs) {
-    if (!knownIds.has(cid)) {
-      _inlineAttachments.push({ id: cid, name: cid, contentType: '', size: 0, isInline: true });
+    if (knownIds.has(cid)) continue;
+
+    const namePrefix  = cid.split('@')[0];
+    const byName      = _attachments.find(a => a.name === namePrefix);
+
+    if (byName) {
+      // Real attachment found via name — move it to the inline list.
+      _attachments       = _attachments.filter(a => a.id !== byName.id);
+      _inlineAttachments = [..._inlineAttachments, byName];
+      knownIds.add(byName.id);
+    } else {
+      // True orphan: CID appears in the body but no corresponding attachment
+      // is accessible via the API.  A sentinel ensures the warning fires and
+      // the <img> tag is stripped from the body; the read/remove/re-add steps
+      // will be skipped for it in convertInlineAttachments.
+      _inlineAttachments.push({ id: cid, name: namePrefix || cid, contentType: '', size: 0, isInline: true });
+      knownIds.add(cid);
     }
   }
 }
@@ -573,15 +592,17 @@ async function convertInlineAttachments(bodyHtml) {
   const item = Office.context.mailbox.item;
 
   for (const att of _inlineAttachments) {
+    let contentResult;
     try {
-      const contentResult = await getAttachmentContentAsync(item, att.id);
-      await removeAttachmentAsync(item, att.id);
-      await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
+      contentResult = await getAttachmentContentAsync(item, att.id);
     } catch (_) {
-      // Sentinel entry (CID found in body HTML but not accessible via the
-      // Office API) — skip read/remove/re-add; the img tag is still stripped
-      // from the body HTML below.
+      // True sentinel: CID appeared in the body HTML but the attachment is
+      // not accessible via the Office API.  Skip read/remove/re-add — the
+      // cid: img tag is still stripped from the body HTML below.
+      continue;
     }
+    await removeAttachmentAsync(item, att.id);
+    await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
   }
 
   // Strip every <img> whose src is a cid: URI — those images are gone from
