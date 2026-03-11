@@ -359,7 +359,9 @@ export async function addModernSubkeys(armoredPrivateKey, passphrase) {
   };
 
   // Read and fully decrypt the key so addSubkey() can access the primary key material.
+  console.debug('[addModernSubkeys] step 1: readPrivateKey');
   const privateKey  = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  console.debug('[addModernSubkeys] step 2: decryptKey, algo=', privateKey.keyPacket.algorithm);
   const unlockedKey = await openpgp.decryptKey({ privateKey, passphrase, config: relaxedConfig });
 
   // PrivateKey.addSubkey() uses OpenPGP.js's own createBindingSignature() internally,
@@ -368,18 +370,22 @@ export async function addModernSubkeys(armoredPrivateKey, passphrase) {
   //
   // sign: true  → Ed25519 signing subkey  (binding sig includes 0x19 back-signature)
   // sign: false → X25519 encryption subkey (no back-signature needed)
+  console.debug('[addModernSubkeys] step 3: addSubkey sign=true');
   let keyWithSubkeys = await unlockedKey.addSubkey({
     type: 'ecc', curve: 'curve25519', sign: true,  config: relaxedConfig,
   });
+  console.debug('[addModernSubkeys] step 4: addSubkey sign=false');
   keyWithSubkeys = await keyWithSubkeys.addSubkey({
     type: 'ecc', curve: 'curve25519', sign: false, config: relaxedConfig,
   });
 
   // Re-encrypt the entire key (primary + all subkeys) with the passphrase.
   // addSubkey() intentionally leaves key material in plaintext; encryptKey() seals it.
+  console.debug('[addModernSubkeys] step 5: encryptKey');
   const encryptedKey = await openpgp.encryptKey({
     privateKey: keyWithSubkeys, passphrase, config: relaxedConfig,
   });
+  console.debug('[addModernSubkeys] step 6: armor');
 
   return {
     armoredPrivate: encryptedKey.armor(),
