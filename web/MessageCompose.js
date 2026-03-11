@@ -85,6 +85,15 @@ let _inlineAttachments = [];
 /** @type {Array<{email:string, key:openpgp.Key}>} */
 let _companyKeys = [];
 
+/**
+ * True when the add-in is running in Outlook on the web (OWA).
+ * Set once in Office.onReady — the platform never changes during a session.
+ * Used to show/hide the inline-attachment Convert option (not available on
+ * desktop because the Office API does not expose clipboard-pasted images).
+ * @type {boolean}
+ */
+let _isWebOutlook = false;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function el(id) { return document.getElementById(id); }
@@ -503,15 +512,13 @@ async function handleEncrypt() {
  */
 function confirmInlineAttachments() {
   return new Promise((resolve) => {
-    const isWeb = Office.context.platform === Office.PlatformType.OfficeOnline;
-
     // Show the Convert option only on Outlook on the web, where
     // getAttachmentsAsync() exposes pasted inline images via the API.
     // On desktop builds those images are inaccessible, so we hide the button
     // and show a simpler "fix manually" hint instead.
-    el('btn-cid-convert').classList.toggle('pgp-hidden', !isWeb);
-    el('cid-hint-web').classList.toggle('pgp-hidden', !isWeb);
-    el('cid-hint-desktop').classList.toggle('pgp-hidden', isWeb);
+    el('btn-cid-convert').classList.toggle('pgp-hidden', !_isWebOutlook);
+    el('cid-hint-web').classList.toggle('pgp-hidden', !_isWebOutlook);
+    el('cid-hint-desktop').classList.toggle('pgp-hidden', _isWebOutlook);
 
     const modal = el('cid-warning-modal');
     modal.style.display = 'flex';
@@ -560,9 +567,13 @@ function reconcileInlineAttachments(bodyHtml) {
   if (cidRefs.size === 0) return;
 
   // 1. Reclassify regular attachments whose id matches a body CID.
-  const reclassified = _attachments.filter(a => cidRefs.has(a.id));
+  //    Single partition pass — avoids scanning _attachments twice.
+  const keep = [], reclassified = [];
+  for (const a of _attachments) {
+    (cidRefs.has(a.id) ? reclassified : keep).push(a);
+  }
   if (reclassified.length > 0) {
-    _attachments      = _attachments.filter(a => !cidRefs.has(a.id));
+    _attachments       = keep;
     _inlineAttachments = [..._inlineAttachments, ...reclassified];
   }
 
@@ -628,7 +639,7 @@ async function convertInlineAttachments(bodyHtml) {
       continue;
     }
     await removeAttachmentAsync(item, att.id);
-    await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
+    await addAttachmentFromBase64Async(item, contentResult.content, att.name);
     converted++;
   }
 
@@ -680,16 +691,7 @@ function setBodyAsync(armoredText) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
   const html = `<html><body><pre style="font-family:monospace;white-space:pre-wrap;">${safe}</pre></body></html>`;
-  return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.body.setAsync(
-      html,
-      { coercionType: Office.CoercionType.Html },
-      (result) => {
-        if (result.status === Office.AsyncResultStatus.Succeeded) resolve();
-        else reject(new Error(result.error.message));
-      }
-    );
-  });
+  return setBodyHtmlAsync(html);
 }
 
 async function encryptAttachments(encryptionKeys, signingKey) {
@@ -713,13 +715,13 @@ async function encryptAttachments(encryptionKeys, signingKey) {
 
     // Add the encrypted version
     const encryptedBase64 = btoa(armoredEncrypted);
-    await addAttachmentFromBase64Async(item, encryptedBase64, att.name + '.pgp', 'text/plain');
+    await addAttachmentFromBase64Async(item, encryptedBase64, att.name + '.pgp');
   }
 
   // Refresh attachment list display
   _attachments = [];
   _inlineAttachments = [];
-  loadAttachments();
+  await loadAttachments();
 }
 
 function getAttachmentContentAsync(item, attachmentId) {
@@ -740,7 +742,7 @@ function removeAttachmentAsync(item, attachmentId) {
   });
 }
 
-function addAttachmentFromBase64Async(item, base64, name, contentType) {
+function addAttachmentFromBase64Async(item, base64, name) {
   return new Promise((resolve, reject) => {
     item.addFileAttachmentFromBase64Async(base64, name, { asyncContext: null }, (result) => {
       if (result.status === Office.AsyncResultStatus.Succeeded) resolve(result.value);
@@ -808,6 +810,7 @@ function wireRecipientListEvents() {
 
 Office.onReady(async () => {
   const userEmail = Office.context.mailbox.userProfile?.emailAddress || '';
+  _isWebOutlook = Office.context.platform === Office.PlatformType.OfficeOnline;
 
   // Load org config
   await loadOrgConfig(userEmail);

@@ -20,6 +20,7 @@ software, plugins, or IT-managed infrastructure.
 | **Encrypt to self** | Your own public key is always included so you can read your Sent items |
 | **Company / legal key** | Org-level key added to every encrypted message (configurable, optional or required) |
 | **Attachment encryption** | Each attachment encrypted individually to `filename.ext.pgp` |
+| **Inline image handling** | Detects inline (embedded) images before encryption and warns the user. On Outlook on the web, offers automatic conversion to regular file attachments. On Outlook desktop the Office API does not expose clipboard-pasted images, so the image is removed from the message body with guidance to re-attach manually. |
 | **Message decryption** | Detects and decrypts PGP-encrypted message bodies; works on desktop, OWA, and Outlook mobile |
 | **Attachment decryption** | One-click decrypt and download for `.pgp` attachments |
 | **Signature verification** | Verifies inline signatures against the local keyring or WKD |
@@ -350,6 +351,12 @@ roaming settings and takes precedence over any well-known URL.
    time).  The toggle starts in the state you set in Personal Preferences and
    can be flipped for any individual message.
 5. Click **Encrypt Message** and enter your passphrase if signing is enabled.
+   - If the message contains **inline images** (e.g. pasted from the clipboard),
+     a warning appears. On **Outlook on the web** you can click **Convert to
+     Regular Attachments** to move them automatically. On **Outlook desktop**
+     the Office API does not expose pasted images, so you must save the image
+     to disk, remove it from the body, and re-attach it as a file before
+     encrypting.
 6. Click Outlook's normal **Send** button.
 
 ### Decrypting a message
@@ -393,6 +400,15 @@ single email as the lookup key.  A fuller implementation would index by
 fingerprint and maintain a multi-email reverse index.
 
 ### Lower priority
+
+**Inline image conversion on Outlook desktop**
+The Office.js `getAttachmentsAsync()` API does not expose clipboard-pasted
+inline images in Outlook desktop (Win32 / Mac).  The add-in detects the broken
+`cid:` reference in the body HTML and warns the user, but cannot read the image
+data to re-attach it programmatically.  A future solution could use the
+Microsoft Graph API (with delegated mail permissions) to retrieve the inline
+attachment bytes and re-upload them — but this requires an OAuth token exchange
+outside the scope of the current task-pane-only architecture.
 
 **Test suite**
 Unit tests for `pgp-core.js` (no DOM required) using Vitest or Jest.
