@@ -167,16 +167,14 @@ export async function readPublicKey(armoredKey) {
  * @returns {Promise<string>} Armored public key (-----BEGIN PGP PUBLIC KEY BLOCK-----)
  */
 export async function extractPublicKey(armoredPrivateKey) {
-  let privateKey;
-  try {
-    privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
-  } catch (err) {
-    if (!_isLegacySelfSigError(err)) throw err;
-    privateKey = await openpgp.readPrivateKey({
-      armoredKey: armoredPrivateKey,
-      config: _buildLegacyKeyReadConfig(),
+  const privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey })
+    .catch(err => {
+      if (!_isLegacySelfSigError(err)) throw err;
+      return openpgp.readPrivateKey({
+        armoredKey: armoredPrivateKey,
+        config: _buildLegacyKeyReadConfig(),
+      });
     });
-  }
   return privateKey.toPublic().armor();
 }
 
@@ -203,20 +201,23 @@ export async function readPublicKeyFromBinary(binaryKey) {
  * @throws If the passphrase is wrong or the armored text is corrupt
  */
 export async function unlockPrivateKey(armoredPrivateKey, passphrase) {
-  // Attempt standard (strict) parsing first.  If it fails because the key
-  // carries a SHA-1 self-signature (common on old DSA/ElGamal keys), retry
-  // with a legacy config that permits SHA-1 for key-reading purposes only.
-  let privateKey;
+  // Attempt standard (strict) parsing first.  If any step fails because the
+  // key carries a SHA-1 self-signature (common on old DSA/ElGamal keys), retry
+  // the entire sequence with a permissive config.
+  //
+  // NOTE: openpgp.decryptKey() calls key.validate() internally, which calls
+  // getPrimaryUser() with the global config.  If the global config rejects
+  // SHA-1, that validation throws the self-sig error — so BOTH readPrivateKey
+  // AND decryptKey must be retried together with the legacy config.
   try {
-    privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+    const privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+    return await openpgp.decryptKey({ privateKey, passphrase });
   } catch (err) {
     if (!_isLegacySelfSigError(err)) throw err;
-    privateKey = await openpgp.readPrivateKey({
-      armoredKey: armoredPrivateKey,
-      config: _buildLegacyKeyReadConfig(),
-    });
+    const config = _buildLegacyKeyReadConfig();
+    const privateKey = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey, config });
+    return await openpgp.decryptKey({ privateKey, passphrase, config });
   }
-  return await openpgp.decryptKey({ privateKey, passphrase });
 }
 
 // ── Key inspection ────────────────────────────────────────────────────────────
@@ -241,29 +242,44 @@ export async function unlockPrivateKey(armoredPrivateKey, passphrase) {
  * }}
  */
 export async function getKeyInfo(armoredKey) {
-  // Legacy DSA/ElGamal keys self-sign with SHA-1.  Try strict parsing first;
-  // if it fails with a self-signature error, fall back to the legacy config
-  // so we can still surface the key's metadata (UID, fingerprint, etc.).
-  let key;
+  // Parse the key.  For legacy DSA/ElGamal keys (SHA-1 self-signatures),
+  // readKey itself usually succeeds because packet parsing does not validate
+  // self-signatures; the failure comes later in getPrimaryUser / getExpirationTime.
+  const key = await openpgp.readKey({ armoredKey })
+    .catch(err => {
+      if (!_isLegacySelfSigError(err)) throw err;
+      return openpgp.readKey({ armoredKey, config: _buildLegacyKeyReadConfig() });
+    });
+
+  // getPrimaryUser() validates self-signatures with the global (strict) config.
+  // In OpenPGP.js v5.5.0 the method does not accept a runtime config parameter,
+  // so we cannot selectively loosen it for one call.  On failure for legacy keys
+  // we extract the UID directly from key.getUserIDs() which reads the raw UserID
+  // packets without any signature validation.
+  //
+  // getExpirationTime() also calls getPrimaryUser() internally, so it has the
+  // same problem — on failure we default to no expiration.
+  let name = '', email = '', expirationTime = Infinity;
+
   try {
-    key = await openpgp.readKey({ armoredKey });
+    const primaryUser = await key.getPrimaryUser();
+    name  = primaryUser?.user?.userID?.name  || '';
+    email = primaryUser?.user?.userID?.email || '';
   } catch (err) {
     if (!_isLegacySelfSigError(err)) throw err;
-    key = await openpgp.readKey({ armoredKey, config: _buildLegacyKeyReadConfig() });
+    // Fallback: parse the first "Name <email>" UID string without sig validation.
+    const firstUid = key.getUserIDs()[0] || '';
+    const match = firstUid.match(/^(.*?)\s*<([^>]+)>$/);
+    if (match) { name = match[1].trim(); email = match[2].trim(); }
+    else        { name = firstUid; }
   }
 
-  let primaryUser;
   try {
-    primaryUser = await key.getPrimaryUser();
-  } catch (err) {
-    if (!_isLegacySelfSigError(err)) throw err;
-    // getPrimaryUser validates self-signatures; retry with legacy config.
-    primaryUser = await key.getPrimaryUser(undefined, undefined, _buildLegacyKeyReadConfig());
+    expirationTime = await key.getExpirationTime();
+  } catch {
+    // getExpirationTime() calls getPrimaryUser() internally; default to no expiry.
+    expirationTime = Infinity;
   }
-
-  // getExpirationTime() returns the JS Date of the earliest binding-signature
-  // expiry, or Infinity if no expiry is set on any valid signature.
-  const expirationTime = await key.getExpirationTime();
 
   const fp = key.getFingerprint().toUpperCase();
   return {
@@ -272,8 +288,8 @@ export async function getKeyInfo(armoredKey) {
     shortId: fp.slice(-8),
     keyId: key.getKeyID().toHex().toUpperCase(),
     userIds: key.getUserIDs(),
-    name: primaryUser?.user?.userID?.name || '',
-    email: primaryUser?.user?.userID?.email || '',
+    name,
+    email,
     created: key.getCreationTime(),
     expires: expirationTime === Infinity ? null : expirationTime,
     isPrivate: key.isPrivate(),
