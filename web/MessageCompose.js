@@ -503,6 +503,16 @@ async function handleEncrypt() {
  */
 function confirmInlineAttachments() {
   return new Promise((resolve) => {
+    const isWeb = Office.context.platform === Office.PlatformType.OfficeOnline;
+
+    // Show the Convert option only on Outlook on the web, where
+    // getAttachmentsAsync() exposes pasted inline images via the API.
+    // On desktop builds those images are inaccessible, so we hide the button
+    // and show a simpler "fix manually" hint instead.
+    el('btn-cid-convert').classList.toggle('pgp-hidden', !isWeb);
+    el('cid-hint-web').classList.toggle('pgp-hidden', !isWeb);
+    el('cid-hint-desktop').classList.toggle('pgp-hidden', isWeb);
+
     const modal = el('cid-warning-modal');
     modal.style.display = 'flex';
     modal.classList.remove('pgp-hidden');
