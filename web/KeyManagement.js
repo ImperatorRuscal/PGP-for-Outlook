@@ -100,9 +100,11 @@ async function refreshMyKeyPanel() {
 
     // Show algorithm badge and "Add Modern Subkeys" button for non-ECC primary key types.
     // Covers DSA/ElGamal (weak) and RSA (any key size — ECC is universally preferred).
+    // OpenPGP.js reports RSA as 'rsaEncryptSign' / 'rsaEncrypt' / 'rsaSign' (camelCase),
+    // so we match by prefix after lowercasing rather than enumerating variants.
     const primaryAlgo = (meta.algorithm || '').toLowerCase();
-    const isNonEccAlgo = ['dsa', 'elgamal', 'rsa', 'rsa_encrypt_sign', 'rsa_encrypt', 'rsa_sign']
-      .includes(primaryAlgo);
+    const isNonEccAlgo = primaryAlgo.startsWith('rsa') ||
+      primaryAlgo === 'dsa' || primaryAlgo === 'elgamal';
 
     if (isNonEccAlgo) {
       const badgeLabel = (primaryAlgo === 'dsa' || primaryAlgo === 'elgamal')
@@ -137,6 +139,7 @@ function showGenerateForm() {
 }
 
 function hideGenerateForm() {
+  el('panel-delete-confirm').classList.add('pgp-hidden');
   el('panel-generate-form').classList.add('pgp-hidden');
   // Reset key type to recommended default
   el('gen-key-type-ecc').checked = true;
@@ -271,11 +274,24 @@ function handleExportPrivateKey() {
   );
 }
 
-async function handleDeleteKey() {
-  if (!confirm('Are you sure you want to delete your key pair? This cannot be undone. You will need to generate a new key pair and share your new public key with all your contacts.')) return;
+/**
+ * First click on "Delete Key" — show the inline confirmation panel.
+ * window.confirm() is blocked in sandboxed Office task-pane iframes (OWA),
+ * so we use a visible confirm/cancel panel in the DOM instead.
+ */
+function handleDeleteKey() {
+  el('panel-delete-confirm').classList.remove('pgp-hidden');
+}
+
+async function handleDeleteConfirm() {
+  el('panel-delete-confirm').classList.add('pgp-hidden');
   await clearKeyPair();
   await refreshMyKeyPanel();
   showStatus('status-bar', 'Key pair deleted.', 'warning');
+}
+
+function handleDeleteCancel() {
+  el('panel-delete-confirm').classList.add('pgp-hidden');
 }
 
 // ── Import existing private key ───────────────────────────────────────────────
@@ -449,11 +465,13 @@ function hideAddSubkeysForm() {
   el('panel-add-subkeys').classList.add('pgp-hidden');
   el('add-subkeys-passphrase').value = '';
   hideStatus('add-subkeys-status');
-  // Re-evaluate whether to show the trigger button
+  // Re-evaluate whether to show the trigger button (same isNonEccAlgo logic as
+  // refreshMyKeyPanel — must cover RSA as well as DSA/ElGamal).
   const meta = getKeyMetadata();
   const primaryAlgo = (meta?.algorithm || '').toLowerCase();
-  const isWeakAlgo = primaryAlgo === 'dsa' || primaryAlgo === 'elgamal';
-  if (isWeakAlgo) {
+  const isNonEccAlgo = primaryAlgo.startsWith('rsa') ||
+    primaryAlgo === 'dsa' || primaryAlgo === 'elgamal';
+  if (isNonEccAlgo) {
     const armoredPublic = getPublicKey();
     if (armoredPublic) {
       hasModernSubkeys(armoredPublic).then(already => {
@@ -802,7 +820,9 @@ Office.onReady(async () => {
   el('btn-copy-pubkey')?.addEventListener('click', handleCopyPublicKey);
   el('btn-send-pubkey')?.addEventListener('click', handleSendPublicKey);
   el('btn-export-key')?.addEventListener('click', handleExportPrivateKey);
-  el('btn-delete-key')?.addEventListener('click', handleDeleteKey);
+  el('btn-delete-key').addEventListener('click', handleDeleteKey);
+  el('btn-delete-confirm').addEventListener('click', handleDeleteConfirm);
+  el('btn-delete-cancel').addEventListener('click', handleDeleteCancel);
 
   // Keyring
   el('btn-find-key').addEventListener('click', handleFindKey);
@@ -816,16 +836,31 @@ Office.onReady(async () => {
   });
   el('btn-import-confirm').addEventListener('click', handleImportKey);
 
-  // Keyring list — delegate remove button clicks
+  // Keyring list — delegate remove button clicks.
+  // Two-click confirmation: first click primes the button; second click within
+  // 3 seconds executes.  Avoids window.confirm(), which is blocked in sandboxed
+  // Office task-pane iframes (OWA).
   el('keyring-list').addEventListener('click', async (e) => {
     const btn = e.target.closest('.btn-remove-key');
     if (!btn) return;
-    const email = btn.dataset.email;
-    if (confirm(`Remove key for ${email}?`)) {
-      await removeContactKey(email);
-      await refreshKeyringPanel();
-      showStatus('status-bar', `Key for ${email} removed.`, 'info');
+
+    if (!btn.dataset.confirming) {
+      btn.dataset.confirming = '1';
+      btn.textContent = 'Confirm?';
+      setTimeout(() => {
+        if (btn.dataset.confirming) {
+          btn.dataset.confirming = '';
+          btn.textContent = 'Remove';
+        }
+      }, 3000);
+      return;
     }
+
+    btn.dataset.confirming = '';
+    const email = btn.dataset.email;
+    await removeContactKey(email);
+    await refreshKeyringPanel();
+    showStatus('status-bar', `Key for ${email} removed.`, 'info');
   });
 
   // Org settings
