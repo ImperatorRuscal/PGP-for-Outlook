@@ -393,6 +393,9 @@ export async function addModernSubkeys(armoredPrivateKey, passphrase) {
     ed25519SubkeyPkt.publicParams = eccKey.keyPacket.publicParams;
     ed25519SubkeyPkt.privateParams = eccKey.keyPacket.privateParams;
     ed25519SubkeyPkt.isEncrypted  = false;
+    // keyID starts as null on a freshly constructed packet; computeFingerprintAndKeyID()
+    // derives it from the public key material so sign() can set issuerKeyID correctly.
+    await ed25519SubkeyPkt.computeFingerprintAndKeyID();
 
     const date = new Date();
 
