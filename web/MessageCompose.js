@@ -79,6 +79,9 @@ let _recipientResults = [];
 /** @type {Array<{id:string, name:string, contentType:string, size:number}>} */
 let _attachments = [];
 
+/** @type {Array<{id:string, name:string, contentType:string, size:number}>} */
+let _inlineAttachments = [];
+
 /** @type {Array<{email:string, key:openpgp.Key}>} */
 let _companyKeys = [];
 
@@ -262,6 +265,7 @@ function loadAttachments() {
         : (item.attachments || []);   // graceful fallback for older hosts
 
       _attachments = raw.filter(a => !a.isInline);
+      _inlineAttachments = raw.filter(a => a.isInline);
 
       if (_attachments.length === 0) {
         empty.classList.remove('pgp-hidden');
@@ -419,7 +423,7 @@ async function handleEncrypt() {
     //    as the PGP payload.  The recipient's decrypt pane will detect that the
     //    decrypted content is HTML and render it in a sandboxed <iframe>.
     showStatus('Encrypting message body…', 'info');
-    const bodyHtml = await getBodyAsync(Office.CoercionType.Html);
+    let bodyHtml = await getBodyAsync(Office.CoercionType.Html);
 
     // Refuse to double-encrypt.  When the body is HTML the PGP armor block will
     // appear as literal text inside the <body> element if already encrypted.
@@ -430,12 +434,19 @@ async function handleEncrypt() {
       return;
     }
 
-    // Warn if the body references cid: inline attachments (e.g. embedded images).
+    // Warn if the Office API reports inline attachments (e.g. embedded images).
     // These are incompatible with PGP encryption — the cid: URIs cannot be
     // resolved after the body is replaced with armor text.
-    if (/\bcid:/i.test(bodyHtml)) {
-      const proceed = await confirmInlineAttachments();
-      if (!proceed) throw new Error('Cancelled by user.');
+    // We rely on the API's isInline flag rather than scanning the body HTML for
+    // "cid:" strings, because Outlook's HTML template may inject cid: references
+    // (e.g. for signatures) even when the user has not embedded any images.
+    if (_inlineAttachments.length > 0) {
+      const choice = await confirmInlineAttachments();
+      if (!choice) throw new Error('Cancelled by user.');
+      if (choice === 'convert') {
+        showStatus('Converting inline attachments to regular attachments…', 'info');
+        bodyHtml = await convertInlineAttachments(bodyHtml);
+      }
     }
 
     const encryptedBody = await encryptMessage(bodyHtml, allEncryptionKeys, signingKey);
@@ -468,9 +479,12 @@ async function handleEncrypt() {
 }
 
 /**
- * Warn the user that the message body contains cid: inline attachments which
- * are incompatible with PGP encryption, then let them choose to proceed or
- * cancel.  Resolves true → continue, false → abort.
+ * Warn the user that the message contains inline attachments which are
+ * incompatible with PGP encryption, then let them choose what to do.
+ * Resolves to:
+ *   'convert'  – move inline attachments to regular attachments, then encrypt
+ *   'continue' – encrypt as-is (inline images will break for the recipient)
+ *   false      – abort
  */
 function confirmInlineAttachments() {
   return new Promise((resolve) => {
@@ -481,14 +495,70 @@ function confirmInlineAttachments() {
     function cleanup() {
       modal.style.display = '';
       modal.classList.add('pgp-hidden');
+      el('btn-cid-convert').removeEventListener('click', onConvert);
       el('btn-cid-continue').removeEventListener('click', onContinue);
       el('btn-cid-cancel').removeEventListener('click', onCancel);
     }
-    function onContinue() { cleanup(); resolve(true); }
+    function onConvert()  { cleanup(); resolve('convert'); }
+    function onContinue() { cleanup(); resolve('continue'); }
     function onCancel()   { cleanup(); resolve(false); }
 
+    el('btn-cid-convert').addEventListener('click', onConvert);
     el('btn-cid-continue').addEventListener('click', onContinue);
     el('btn-cid-cancel').addEventListener('click', onCancel);
+  });
+}
+
+/**
+ * Convert all inline attachments (isInline) to regular file attachments.
+ *
+ * For each inline attachment:
+ *   1. Read its content via the Office API.
+ *   2. Remove the inline attachment from the message.
+ *   3. Re-add it as a regular (non-inline) file attachment.
+ *
+ * Also strips <img src="cid:…"> tags from the supplied body HTML (since the
+ * cid: URIs will no longer resolve once the inline attachments are gone) and
+ * persists the cleaned HTML back to the message body.
+ *
+ * Returns the cleaned body HTML so the caller can use it for encryption
+ * without a redundant round-trip to the Office API.
+ *
+ * @param {string} bodyHtml  Current HTML body of the message.
+ * @returns {Promise<string>} Cleaned HTML body (cid: image tags removed).
+ */
+async function convertInlineAttachments(bodyHtml) {
+  const item = Office.context.mailbox.item;
+
+  for (const att of _inlineAttachments) {
+    const contentResult = await getAttachmentContentAsync(item, att.id);
+    await removeAttachmentAsync(item, att.id);
+    await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
+  }
+
+  // Strip every <img> whose src is a cid: URI — those images are gone from
+  // the body now that they have been promoted to regular file attachments.
+  const cleaned = bodyHtml.replace(/<img\b[^>]*\bsrc=["']cid:[^"']*["'][^>]*\/?>/gi, '');
+
+  await setBodyHtmlAsync(cleaned);
+
+  _inlineAttachments = [];
+  await loadAttachments();
+
+  return cleaned;
+}
+
+/** Set the message body as HTML without any PGP-armor wrapping. */
+function setBodyHtmlAsync(html) {
+  return new Promise((resolve, reject) => {
+    Office.context.mailbox.item.body.setAsync(
+      html,
+      { coercionType: Office.CoercionType.Html },
+      (result) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) resolve();
+        else reject(new Error(result.error.message));
+      }
+    );
   });
 }
 
@@ -552,6 +622,7 @@ async function encryptAttachments(encryptionKeys, signingKey) {
 
   // Refresh attachment list display
   _attachments = [];
+  _inlineAttachments = [];
   loadAttachments();
 }
 
