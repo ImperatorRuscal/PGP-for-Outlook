@@ -434,12 +434,13 @@ async function handleEncrypt() {
       return;
     }
 
-    // Warn if the Office API reports inline attachments (e.g. embedded images).
+    // Warn if the message body contains inline images (e.g. embedded images).
     // These are incompatible with PGP encryption — the cid: URIs cannot be
     // resolved after the body is replaced with armor text.
-    // We rely on the API's isInline flag rather than scanning the body HTML for
-    // "cid:" strings, because Outlook's HTML template may inject cid: references
-    // (e.g. for signatures) even when the user has not embedded any images.
+    // reconcileInlineAttachments() supplements the API's isInline flag with a
+    // direct body-HTML scan, because some Outlook environments (e.g. OWA) set
+    // isInline=false for user-pasted images, or omit them from the API list.
+    reconcileInlineAttachments(bodyHtml);
     if (_inlineAttachments.length > 0) {
       const choice = await confirmInlineAttachments();
       if (!choice) throw new Error('Cancelled by user.');
@@ -510,6 +511,47 @@ function confirmInlineAttachments() {
 }
 
 /**
+ * Supplement the API's isInline flag with a direct scan of the body HTML.
+ *
+ * Some Outlook environments (notably OWA) report user-pasted images with
+ * isInline=false, or don't include them in getAttachmentsAsync() at all, even
+ * though the body HTML references them via <img src="cid:…">.
+ *
+ * This function:
+ *   1. Extracts every CID value from <img src="cid:…"> tags in the body.
+ *   2. Moves any _attachments entry whose id matches a found CID into
+ *      _inlineAttachments (reclassification of false-negative API results).
+ *   3. For CIDs that have no matching attachment at all (orphaned), pushes a
+ *      sentinel object into _inlineAttachments so the warning still fires and
+ *      the img tag is stripped from the body during conversion.
+ *
+ * Must be called after both loadAttachments() and getBodyAsync() have settled.
+ *
+ * @param {string} bodyHtml  Current HTML body of the message.
+ */
+function reconcileInlineAttachments(bodyHtml) {
+  const cidRefs = new Set(
+    [...bodyHtml.matchAll(/<img\b[^>]*\bsrc=["']cid:([^"']+)["']/gi)].map(m => m[1])
+  );
+  if (cidRefs.size === 0) return;
+
+  // 1. Reclassify regular attachments whose id matches a body CID.
+  const reclassified = _attachments.filter(a => cidRefs.has(a.id));
+  if (reclassified.length > 0) {
+    _attachments      = _attachments.filter(a => !cidRefs.has(a.id));
+    _inlineAttachments = [..._inlineAttachments, ...reclassified];
+  }
+
+  // 2. Add sentinel entries for CIDs that have no matching attachment at all.
+  const knownIds = new Set(_inlineAttachments.map(a => a.id));
+  for (const cid of cidRefs) {
+    if (!knownIds.has(cid)) {
+      _inlineAttachments.push({ id: cid, name: cid, contentType: '', size: 0, isInline: true });
+    }
+  }
+}
+
+/**
  * Convert all inline attachments (isInline) to regular file attachments.
  *
  * For each inline attachment:
@@ -531,9 +573,15 @@ async function convertInlineAttachments(bodyHtml) {
   const item = Office.context.mailbox.item;
 
   for (const att of _inlineAttachments) {
-    const contentResult = await getAttachmentContentAsync(item, att.id);
-    await removeAttachmentAsync(item, att.id);
-    await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
+    try {
+      const contentResult = await getAttachmentContentAsync(item, att.id);
+      await removeAttachmentAsync(item, att.id);
+      await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
+    } catch (_) {
+      // Sentinel entry (CID found in body HTML but not accessible via the
+      // Office API) — skip read/remove/re-add; the img tag is still stripped
+      // from the body HTML below.
+    }
   }
 
   // Strip every <img> whose src is a cid: URI — those images are gone from
