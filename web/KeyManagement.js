@@ -35,7 +35,7 @@
  *        compose pane.  Default is false; the user can override per-message.
  */
 
-import { generateKeyPair, getKeyInfo, extractPublicKey, unlockPrivateKey } from './js/pgp/pgp-core.js';
+import { generateKeyPair, getKeyInfo, extractPublicKey, unlockPrivateKey, addModernSubkeys, hasModernSubkeys } from './js/pgp/pgp-core.js';
 import {
   hasKeyPair, getPrivateKey, getPublicKey, getKeyMetadata,
   saveKeyPair, clearKeyPair,
@@ -97,6 +97,41 @@ async function refreshMyKeyPanel() {
       el('key-status-badge').className = 'pgp-badge pgp-badge--error';
       el('key-status-badge').textContent = 'Expired';
     }
+
+    // Show algorithm badge and "Add Modern Subkeys" button for weak/legacy key types.
+    // DSA/ElGamal is the classic legacy type; also flag any other algorithm that is
+    // not one of the modern ECC or RSA-4096 types.
+    const legacyAlgos = new Set(['dsa', 'elgamal', 'rsa', 'rsa_encrypt_sign', 'rsa_encrypt', 'rsa_sign']);
+    const primaryAlgo = (meta.algorithm || '').toLowerCase();
+    const isLegacyAlgo = legacyAlgos.has(primaryAlgo) && primaryAlgo !== 'rsa'; // RSA is strong enough
+    // Specifically flag DSA and ElGamal as legacy
+    const isWeakAlgo = primaryAlgo === 'dsa' || primaryAlgo === 'elgamal';
+
+    if (isWeakAlgo) {
+      el('key-algorithm-badge').textContent =
+        `⚠ ${meta.algorithm?.toUpperCase() ?? 'Legacy'} key — weak algorithm`;
+      el('key-legacy-row').classList.remove('pgp-hidden');
+
+      // Check whether modern subkeys have already been added, then show/hide
+      // the Add Modern Subkeys trigger button accordingly.
+      const armoredPublic = getPublicKey();
+      if (armoredPublic) {
+        hasModernSubkeys(armoredPublic).then(alreadyModern => {
+          if (alreadyModern) {
+            el('panel-add-subkeys-trigger').classList.add('pgp-hidden');
+          } else {
+            el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
+          }
+        }).catch(() => {
+          // On error, show the button anyway — addModernSubkeys will handle it
+          el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
+        });
+      }
+    } else {
+      el('key-legacy-row').classList.add('pgp-hidden');
+      el('panel-add-subkeys-trigger').classList.add('pgp-hidden');
+      el('panel-add-subkeys').classList.add('pgp-hidden');
+    }
   }
 }
 
@@ -150,13 +185,14 @@ async function handleGenerate() {
     const info = await getKeyInfo(armoredPublic);
 
     await saveKeyPair(armoredPrivate, armoredPublic, {
-      name:                info.name,
-      email:               info.email,
-      fingerprint:         info.fingerprint,
+      name:                 info.name,
+      email:                info.email,
+      fingerprint:          info.fingerprint,
       fingerprintFormatted: info.fingerprintFormatted,
-      keyId:               info.keyId,
-      created:             info.created?.toISOString(),
-      expires:             info.expires?.toISOString() ?? null,
+      keyId:                info.keyId,
+      created:              info.created?.toISOString(),
+      expires:              info.expires?.toISOString() ?? null,
+      algorithm:            info.algorithm,
     });
 
     hideGenerateForm();
@@ -288,6 +324,7 @@ async function _doSaveImport(armoredPrivate, armoredPublic, info) {
     keyId:                info.keyId,
     created:              info.created?.toISOString(),
     expires:              info.expires?.toISOString() ?? null,
+    algorithm:            info.algorithm,
   });
   hideImportKeyForm();
   await refreshMyKeyPanel();
@@ -401,6 +438,98 @@ async function handleConfirmLegacyImport() {
     showStatus('import-key-status', `Import failed: ${e.message}`, 'error');
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ── Add Modern Subkeys ────────────────────────────────────────────────────────
+
+function showAddSubkeysForm() {
+  el('panel-add-subkeys-trigger').classList.add('pgp-hidden');
+  el('panel-add-subkeys').classList.remove('pgp-hidden');
+  hideStatus('add-subkeys-status');
+  el('add-subkeys-passphrase').focus();
+}
+
+function hideAddSubkeysForm() {
+  el('panel-add-subkeys').classList.add('pgp-hidden');
+  el('add-subkeys-passphrase').value = '';
+  hideStatus('add-subkeys-status');
+  // Re-evaluate whether to show the trigger button
+  const meta = getKeyMetadata();
+  const primaryAlgo = (meta?.algorithm || '').toLowerCase();
+  const isWeakAlgo = primaryAlgo === 'dsa' || primaryAlgo === 'elgamal';
+  if (isWeakAlgo) {
+    const armoredPublic = getPublicKey();
+    if (armoredPublic) {
+      hasModernSubkeys(armoredPublic).then(already => {
+        el('panel-add-subkeys-trigger').classList.toggle('pgp-hidden', already);
+      }).catch(() => {
+        el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
+      });
+    }
+  }
+}
+
+/**
+ * Append Ed25519 and X25519 subkeys to the stored legacy private key.
+ * The passphrase is used to authorize the operation (unlock the DSA primary key
+ * for signing) and to re-encrypt the new subkeys before saving.
+ */
+async function handleAddSubkeys() {
+  const passphrase = el('add-subkeys-passphrase').value;
+  if (!passphrase) {
+    return showStatus('add-subkeys-status', 'Passphrase is required.', 'error');
+  }
+
+  const armoredPrivate = getPrivateKey();
+  if (!armoredPrivate) return;
+
+  const btn     = el('btn-add-subkeys-confirm');
+  const spinner = el('add-subkeys-spinner');
+  btn.disabled  = true;
+  spinner.classList.remove('pgp-hidden');
+  showStatus('add-subkeys-status', 'Adding modern subkeys — this may take a moment…', 'info');
+
+  try {
+    const { armoredPrivate: newPrivate, armoredPublic: newPublic } =
+      await addModernSubkeys(armoredPrivate, passphrase);
+
+    // Re-read info from the updated key (algorithm is still 'dsa' for the primary,
+    // but subkeys now include Ed25519 and X25519).
+    const info = await getKeyInfo(newPublic);
+    const meta = getKeyMetadata();
+
+    await saveKeyPair(newPrivate, newPublic, {
+      // Preserve original metadata fields; only update algorithm if desired
+      name:                 meta?.name  ?? info.name,
+      email:                meta?.email ?? info.email,
+      fingerprint:          meta?.fingerprint          ?? info.fingerprint,
+      fingerprintFormatted: meta?.fingerprintFormatted ?? info.fingerprintFormatted,
+      keyId:                meta?.keyId ?? info.keyId,
+      created:              meta?.created ?? info.created?.toISOString(),
+      expires:              meta?.expires ?? (info.expires?.toISOString() ?? null),
+      algorithm:            meta?.algorithm ?? info.algorithm,
+    });
+
+    hideAddSubkeysForm();
+    // Hide the trigger button — modern subkeys are now present
+    el('panel-add-subkeys-trigger').classList.add('pgp-hidden');
+    await refreshMyKeyPanel();
+    showStatus('status-bar',
+      'Modern subkeys added: Ed25519 (sign) + X25519 (encrypt). ' +
+      'Share your updated public key with contacts.',
+      'success'
+    );
+  } catch (e) {
+    const msg = e.message?.toLowerCase() ?? '';
+    if (msg.includes('passphrase') || msg.includes('decrypt')) {
+      showStatus('add-subkeys-status', 'Incorrect passphrase — please try again.', 'error');
+    } else {
+      showStatus('add-subkeys-status', `Failed: ${e.message}`, 'error');
+    }
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('pgp-hidden');
   }
 }
 
@@ -669,6 +798,11 @@ Office.onReady(async () => {
     el('import-key-buttons').classList.remove('pgp-hidden');
     hideStatus('import-key-status');
   });
+
+  // Add Modern Subkeys panel
+  el('btn-add-subkeys').addEventListener('click', showAddSubkeysForm);
+  el('btn-add-subkeys-cancel').addEventListener('click', hideAddSubkeysForm);
+  el('btn-add-subkeys-confirm').addEventListener('click', handleAddSubkeys);
 
   el('btn-copy-pubkey')?.addEventListener('click', handleCopyPublicKey);
   el('btn-send-pubkey')?.addEventListener('click', handleSendPublicKey);
