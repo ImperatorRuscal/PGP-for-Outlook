@@ -15,7 +15,7 @@
  * Storage key layout:
  *   pgp_private_key  — Armored, passphrase-encrypted private key string
  *   pgp_public_key   — Armored public key string
- *   pgp_key_meta     — Object: { name, email, fingerprint, keyId, created, expires }
+ *   pgp_key_meta     — Object: { name, email, fingerprint, keyId, created, expires, algorithm }
  *   pgp_keyring      — Object: { "email@example.com": "-----BEGIN PGP PUBLIC KEY BLOCK-----..." }
  *   pgp_org_override — Object: manual org config override (see org-config.js)
  *   pgp_sign_default — Boolean: user's personal default for the "sign messages" toggle

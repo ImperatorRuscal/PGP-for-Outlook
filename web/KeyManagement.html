@@ -50,6 +50,11 @@
       </div>
       <span class="pgp-fingerprint" id="key-fingerprint"></span>
 
+      <!-- Shown for legacy (weak) key types -->
+      <div id="key-legacy-row" class="pgp-hidden" style="margin-top:6px;">
+        <span class="pgp-badge pgp-badge--warning" id="key-algorithm-badge"></span>
+      </div>
+
       <div class="pgp-row pgp-mt-md" style="flex-wrap:wrap;gap:6px;">
         <button class="pgp-btn pgp-btn--secondary" id="btn-copy-pubkey">Copy Public Key</button>
         <button class="pgp-btn pgp-btn--secondary" id="btn-send-pubkey">Send via Email</button>
@@ -58,6 +63,46 @@
         <button class="pgp-btn pgp-btn--secondary" id="btn-show-import-key">Import Key</button>
         <button class="pgp-btn pgp-btn--danger"    id="btn-delete-key">Delete Key</button>
       </div>
+
+      <!-- Add Modern Subkeys — shown only for legacy (weak) algorithm keys -->
+      <div id="panel-add-subkeys-trigger" class="pgp-hidden" style="margin-top:10px;">
+        <button class="pgp-btn pgp-btn--secondary pgp-btn--full" id="btn-add-subkeys">
+          ✦ Add Modern ECC Subkeys
+        </button>
+      </div>
+
+      <!-- Add Modern Subkeys form — shown when btn-add-subkeys is clicked -->
+      <div id="panel-add-subkeys" class="pgp-hidden"
+           style="margin-top:12px;border-top:1px solid #edebe9;padding-top:12px;">
+        <div class="pgp-section-title" style="margin-bottom:6px;">Add Modern ECC Subkeys</div>
+        <p style="font-size:12px;color:#3b3a39;margin:0 0 10px;">
+          This will append two new subkeys to your existing key:
+        </p>
+        <ul style="font-size:12px;color:#3b3a39;margin:0 0 10px;padding-left:18px;">
+          <li><strong>Ed25519</strong> — preferred signing subkey (SHA-256, no expiry)</li>
+          <li><strong>X25519</strong> — preferred encryption subkey (SHA-256, no expiry)</li>
+        </ul>
+        <p style="font-size:12px;color:#3b3a39;margin:0 0 10px;">
+          Your original key is preserved unchanged. Modern clients will automatically
+          prefer the new subkeys. After adding, share your updated public key with
+          contacts who need to send you encrypted mail.
+        </p>
+        <div class="pgp-field">
+          <label for="add-subkeys-passphrase">Your passphrase</label>
+          <input type="password" id="add-subkeys-passphrase"
+            placeholder="Passphrase for this key" autocomplete="off" />
+          <span class="pgp-field__hint">Required to authorize the new subkey bindings.</span>
+        </div>
+        <div id="add-subkeys-status" class="pgp-hidden pgp-mt-sm"></div>
+        <div class="pgp-row pgp-mt-md">
+          <button class="pgp-btn pgp-btn--primary" id="btn-add-subkeys-confirm" style="flex:1;">
+            <span class="pgp-spinner pgp-hidden" id="add-subkeys-spinner"></span>
+            Add Modern Subkeys
+          </button>
+          <button class="pgp-btn pgp-btn--secondary" id="btn-add-subkeys-cancel">Cancel</button>
+        </div>
+      </div>
+
       <p style="font-size:11px;color:#605e5c;margin:6px 0 0;">
         <strong>Download Backup</strong> saves your passphrase-protected private key as
         a <code>.asc</code> file. Keep this file secure — it cannot be decrypted without
