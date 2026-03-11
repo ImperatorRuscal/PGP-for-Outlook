@@ -58,7 +58,11 @@
   <section class="pgp-section pgp-hidden" id="section-decrypted">
     <div class="pgp-row pgp-row--between" style="margin-bottom:8px;">
       <div class="pgp-section-title" style="margin:0;">Decrypted Content</div>
-      <div id="signature-badge"></div>
+      <div class="pgp-row" style="gap:6px;align-items:center;">
+        <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-copy-decrypted">Copy</button>
+        <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-popout-decrypted">&#x26F6; Pop Out</button>
+        <div id="signature-badge"></div>
+      </div>
     </div>
     <div id="signature-details" class="pgp-hidden" style="font-size:11px;color:#605e5c;margin-bottom:8px;"></div>
     <!-- Plain-text decrypted content (shown when payload is not HTML) -->
@@ -70,10 +74,6 @@
         referrerpolicy="no-referrer"
         style="width:100%;border:none;min-height:320px;"
         title="Decrypted message content"></iframe>
-    </div>
-    <div class="pgp-row" style="gap:8px;margin-top:8px;">
-      <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-copy-decrypted">Copy to Clipboard</button>
-      <button class="pgp-btn pgp-btn--secondary pgp-btn--sm" id="btn-popout-decrypted">&#x26F6; Pop Out</button>
     </div>
   </section>
 
