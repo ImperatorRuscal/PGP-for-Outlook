@@ -446,7 +446,21 @@ async function handleEncrypt() {
       if (!choice) throw new Error('Cancelled by user.');
       if (choice === 'convert') {
         showStatus('Converting inline attachments to regular attachments…', 'info');
-        bodyHtml = await convertInlineAttachments(bodyHtml);
+        const { cleaned, converted } = await convertInlineAttachments(bodyHtml);
+        bodyHtml = cleaned;
+        if (converted === 0) {
+          // Outlook does not expose clipboard-pasted images through the
+          // attachment API, so we can strip the cid: reference but cannot
+          // read and re-attach the data.  The body has been cleaned; warn the
+          // user so they can re-attach the image manually.
+          showStatus(
+            '⚠ The inline image(s) could not be accessed via the Outlook API ' +
+            'and have been removed from the message body. To include the ' +
+            'image(s), save each to disk and re-attach as a regular file.',
+            'warning'
+          );
+          await new Promise(r => setTimeout(r, 4000));
+        }
       }
     }
 
@@ -533,18 +547,11 @@ function reconcileInlineAttachments(bodyHtml) {
   const cidRefs = new Set(
     [...bodyHtml.matchAll(/<img\b[^>]*\bsrc=["']cid:([^"']+)["']/gi)].map(m => m[1])
   );
-  console.log('[PGP] reconcileInlineAttachments: cidRefs found in body:', [...cidRefs]);
-  console.log('[PGP] reconcileInlineAttachments: _attachments from API:',
-    _attachments.map(a => ({ id: a.id, name: a.name, isInline: a.isInline })));
-  console.log('[PGP] reconcileInlineAttachments: _inlineAttachments from API:',
-    _inlineAttachments.map(a => ({ id: a.id, name: a.name, isInline: a.isInline })));
-
   if (cidRefs.size === 0) return;
 
   // 1. Reclassify regular attachments whose id matches a body CID.
   const reclassified = _attachments.filter(a => cidRefs.has(a.id));
   if (reclassified.length > 0) {
-    console.log('[PGP] reconcileInlineAttachments: reclassified by id:', reclassified.map(a => a.id));
     _attachments      = _attachments.filter(a => !cidRefs.has(a.id));
     _inlineAttachments = [..._inlineAttachments, ...reclassified];
   }
@@ -563,24 +570,18 @@ function reconcileInlineAttachments(bodyHtml) {
 
     if (byName) {
       // Real attachment found via name — move it to the inline list.
-      console.log('[PGP] reconcileInlineAttachments: reclassified by name prefix:', byName.id, byName.name);
       _attachments       = _attachments.filter(a => a.id !== byName.id);
       _inlineAttachments = [..._inlineAttachments, byName];
       knownIds.add(byName.id);
     } else {
       // True orphan: CID appears in the body but no corresponding attachment
-      // is accessible via the API.  A sentinel ensures the warning fires and
-      // the <img> tag is stripped from the body; the read/remove/re-add steps
-      // will be skipped for it in convertInlineAttachments.
-      console.warn('[PGP] reconcileInlineAttachments: orphaned CID (no matching attachment):', cid,
-        '— sentinel created. namePrefix was:', namePrefix,
-        '— available attachment names:', _attachments.map(a => a.name));
+      // is accessible via the API (common for clipboard-pasted images in some
+      // Outlook builds).  A sentinel ensures the warning fires and the <img>
+      // tag is stripped from the body; read/remove/re-add is skipped for it.
       _inlineAttachments.push({ id: cid, name: namePrefix || cid, contentType: '', size: 0, isInline: true });
       knownIds.add(cid);
     }
   }
-  console.log('[PGP] reconcileInlineAttachments: final _inlineAttachments:',
-    _inlineAttachments.map(a => ({ id: a.id, name: a.name })));
 }
 
 /**
@@ -604,27 +605,21 @@ function reconcileInlineAttachments(bodyHtml) {
 async function convertInlineAttachments(bodyHtml) {
   const item = Office.context.mailbox.item;
 
-  console.log('[PGP] convertInlineAttachments: processing', _inlineAttachments.length, 'entries:',
-    _inlineAttachments.map(a => ({ id: a.id, name: a.name })));
+  let converted = 0;
 
   for (const att of _inlineAttachments) {
     let contentResult;
     try {
       contentResult = await getAttachmentContentAsync(item, att.id);
-      console.log('[PGP] convertInlineAttachments: got content for', att.id,
-        'format:', contentResult.format, 'content length:', contentResult.content?.length);
-    } catch (e) {
-      // True sentinel: CID appeared in the body HTML but the attachment is
-      // not accessible via the Office API.  Skip read/remove/re-add — the
-      // cid: img tag is still stripped from the body HTML below.
-      console.warn('[PGP] convertInlineAttachments: getAttachmentContentAsync FAILED for id:', att.id, '—', e.message);
+    } catch (_) {
+      // The attachment is not accessible via the Office API (e.g. a pasted
+      // clipboard image that Outlook doesn't expose through getAttachmentsAsync).
+      // Skip read/remove/re-add; the cid: img tag is still stripped below.
       continue;
     }
-    console.log('[PGP] convertInlineAttachments: removing attachment', att.id);
     await removeAttachmentAsync(item, att.id);
-    console.log('[PGP] convertInlineAttachments: re-adding as regular attachment:', att.name);
     await addAttachmentFromBase64Async(item, contentResult.content, att.name, att.contentType);
-    console.log('[PGP] convertInlineAttachments: successfully re-added:', att.name);
+    converted++;
   }
 
   // Strip every <img> whose src is a cid: URI — those images are gone from
@@ -635,10 +630,8 @@ async function convertInlineAttachments(bodyHtml) {
 
   _inlineAttachments = [];
   await loadAttachments();
-  console.log('[PGP] convertInlineAttachments: after loadAttachments — _attachments:',
-    _attachments.map(a => ({ id: a.id, name: a.name, isInline: a.isInline })));
 
-  return cleaned;
+  return { cleaned, converted };
 }
 
 /** Set the message body as HTML without any PGP-armor wrapping. */
