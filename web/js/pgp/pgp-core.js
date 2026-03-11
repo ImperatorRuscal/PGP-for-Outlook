@@ -344,118 +344,47 @@ export async function addModernSubkeys(armoredPrivateKey, passphrase) {
   const dsaId     = openpgp.enums?.publicKey?.dsa     ?? 17;
   const elgamalId = openpgp.enums?.publicKey?.elgamal ?? 16;
 
-  // Temporarily loosen the global config so we can read and unlock the legacy key.
-  const savedRejectHashes = openpgp.config.rejectHashAlgorithms;
-  const savedRejectPK     = openpgp.config.rejectPublicKeyAlgorithms;
-  const relaxedHashes = new Set(savedRejectHashes); relaxedHashes.delete(sha1Id);
-  const relaxedPK     = new Set(savedRejectPK);     relaxedPK.delete(dsaId); relaxedPK.delete(elgamalId);
-  openpgp.config.rejectHashAlgorithms     = relaxedHashes;
-  openpgp.config.rejectPublicKeyAlgorithms = relaxedPK;
+  // Build a permissive config object for all operations that touch the legacy key.
+  // This is passed per-call rather than mutating the global config, which avoids
+  // race conditions if multiple operations overlap.
+  const relaxedConfig = {
+    rejectHashAlgorithms: new Set(
+      [...openpgp.config.rejectHashAlgorithms].filter(id => id !== sha1Id)
+    ),
+    rejectPublicKeyAlgorithms: new Set(
+      [...openpgp.config.rejectPublicKeyAlgorithms].filter(
+        id => id !== dsaId && id !== elgamalId
+      )
+    ),
+  };
 
-  try {
-    // Read the original key (still encrypted) — used as the base packet list so that
-    // the DSA primary key material is preserved in its encrypted form in the output.
-    const dsaPrivate = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  // Read and fully decrypt the key so addSubkey() can access the primary key material.
+  const privateKey  = await openpgp.readPrivateKey({ armoredKey: armoredPrivateKey });
+  const unlockedKey = await openpgp.decryptKey({ privateKey, passphrase, config: relaxedConfig });
 
-    // Unlock the DSA primary key to get its secret key material for signing.
-    const unlockedDsa   = await openpgp.decryptKey({ privateKey: dsaPrivate, passphrase });
-    const dsaPrimaryPkt = unlockedDsa.keyPacket; // SecretKeyPacket, decrypted
+  // PrivateKey.addSubkey() uses OpenPGP.js's own createBindingSignature() internally,
+  // which correctly sets publicKeyAlgorithm, handles the back-signature for signing
+  // subkeys, and enforces key flags — far more reliable than hand-crafting packets.
+  //
+  // sign: true  → Ed25519 signing subkey  (binding sig includes 0x19 back-signature)
+  // sign: false → X25519 encryption subkey (no back-signature needed)
+  let keyWithSubkeys = await unlockedKey.addSubkey({
+    type: 'ecc', curve: 'curve25519', sign: true,  config: relaxedConfig,
+  });
+  keyWithSubkeys = await keyWithSubkeys.addSubkey({
+    type: 'ecc', curve: 'curve25519', sign: false, config: relaxedConfig,
+  });
 
-    // Extract the UID to use when generating the temporary helper ECC key.
-    const firstUid = dsaPrivate.getUserIDs()[0] || 'Key Owner';
-    const uidMatch  = firstUid.match(/^(.*?)\s*<([^>]+)>$/);
-    const uid = { name: uidMatch?.[1]?.trim() || firstUid, email: uidMatch?.[2]?.trim() || '' };
+  // Re-encrypt the entire key (primary + all subkeys) with the passphrase.
+  // addSubkey() intentionally leaves key material in plaintext; encryptKey() seals it.
+  const encryptedKey = await openpgp.encryptKey({
+    privateKey: keyWithSubkeys, passphrase, config: relaxedConfig,
+  });
 
-    // Generate a temporary ECC key WITHOUT a passphrase so the subkey packets
-    // have their private material available in plaintext (needed for back-signature
-    // creation and for re-encryption below).  This key is never stored; we only
-    // borrow its key material.
-    const eccDate = new Date();
-    const { privateKey: eccArmored } = await openpgp.generateKey({
-      type: 'ecc', curve: 'curve25519',
-      userIDs: [uid],
-      format: 'armored',
-      date: eccDate,
-      // No passphrase — we need plaintext key material
-    });
-    const eccKey = await openpgp.readPrivateKey({ armoredKey: eccArmored });
-    // ECC key layout: keyPacket = Ed25519 primary, subkeys[0] = X25519 encryption subkey
-    const x25519SubkeyPkt = eccKey.subkeys[0].keyPacket; // SecretSubkeyPacket, decrypted
-
-    // Build an Ed25519 SecretSubkeyPacket from the ECC primary key's material.
-    // SecretSubkeyPacket (tag 7) and SecretKeyPacket (tag 5) are structurally identical;
-    // only the packet tag differs.  Using eccDate+1s ensures a unique fingerprint even
-    // though the public key bytes are shared with the temporary ECC primary.
-    const ed25519SubkeyDate = new Date(eccDate.getTime() + 1000);
-    const ed25519SubkeyPkt  = new openpgp.SecretSubkeyPacket(ed25519SubkeyDate);
-    ed25519SubkeyPkt.version      = eccKey.keyPacket.version;
-    ed25519SubkeyPkt.algorithm    = eccKey.keyPacket.algorithm;
-    ed25519SubkeyPkt.publicParams = eccKey.keyPacket.publicParams;
-    ed25519SubkeyPkt.privateParams = eccKey.keyPacket.privateParams;
-    ed25519SubkeyPkt.isEncrypted  = false;
-    // keyID starts as null on a freshly constructed packet; computeFingerprintAndKeyID()
-    // derives it from the public key material so sign() can set issuerKeyID correctly.
-    await ed25519SubkeyPkt.computeFingerprintAndKeyID();
-
-    const date = new Date();
-
-    // ── Ed25519 signing subkey ─────────────────────────────────────────────────
-    // RFC 4880 §5.2.1: a signing subkey binding (0x18) MUST carry an embedded
-    // primary-key-binding back-signature (0x19) made by the subkey itself.
-    const dataForEd25519 = { key: dsaPrimaryPkt, bind: ed25519SubkeyPkt };
-
-    // Back-signature (0x19) — signed by the Ed25519 subkey.
-    // RFC 4880 calls this "Primary Key Binding"; OpenPGP.js exposes it as
-    // enums.signature.keyBinding (0x19) — there is no primaryKeyBinding key.
-    const ed25519BackSig = new openpgp.SignaturePacket();
-    ed25519BackSig.signatureType = openpgp.enums.signature.keyBinding;
-    ed25519BackSig.hashAlgorithm = openpgp.enums.hash.sha256;
-    await ed25519BackSig.sign(ed25519SubkeyPkt, dataForEd25519, date);
-
-    // Binding signature (0x18) — signed by the DSA primary key
-    const ed25519BindSig = new openpgp.SignaturePacket();
-    ed25519BindSig.signatureType    = openpgp.enums.signature.subkeyBinding;
-    ed25519BindSig.hashAlgorithm    = openpgp.enums.hash.sha256;
-    ed25519BindSig.keyFlags         = [openpgp.enums.keyFlags.signData];
-    ed25519BindSig.embeddedSignature = ed25519BackSig;
-    await ed25519BindSig.sign(dsaPrimaryPkt, dataForEd25519, date);
-
-    // ── X25519 encryption subkey ───────────────────────────────────────────────
-    // No back-signature is required for encryption-only subkeys.
-    const dataForX25519 = { key: dsaPrimaryPkt, bind: x25519SubkeyPkt };
-
-    const x25519BindSig = new openpgp.SignaturePacket();
-    x25519BindSig.signatureType = openpgp.enums.signature.subkeyBinding;
-    x25519BindSig.hashAlgorithm = openpgp.enums.hash.sha256;
-    x25519BindSig.keyFlags      = [
-      openpgp.enums.keyFlags.encryptCommunication | openpgp.enums.keyFlags.encryptStorage,
-    ];
-    await x25519BindSig.sign(dsaPrimaryPkt, dataForX25519, date);
-
-    // Encrypt both new subkey packets with the passphrase before serialization.
-    // The encryption uses OpenPGP.js defaults: AES-256, SHA-256 S2K.
-    await ed25519SubkeyPkt.encrypt(passphrase);
-    await x25519SubkeyPkt.encrypt(passphrase);
-
-    // Merge: start from the original (still-encrypted) DSA packet list, then
-    // append the new subkey packets and their binding signatures.
-    const packets = dsaPrivate.toPacketList();
-    packets.push(ed25519SubkeyPkt, ed25519BindSig);
-    packets.push(x25519SubkeyPkt,  x25519BindSig);
-
-    // Serialize and re-read the merged key to validate its structure.
-    const binaryKey = packets.write();
-    const mergedKey = await openpgp.readPrivateKey({ binaryKey });
-
-    return {
-      armoredPrivate: mergedKey.armor(),
-      armoredPublic:  mergedKey.toPublic().armor(),
-    };
-  } finally {
-    // Always restore the original config, even on error.
-    openpgp.config.rejectHashAlgorithms     = savedRejectHashes;
-    openpgp.config.rejectPublicKeyAlgorithms = savedRejectPK;
-  }
+  return {
+    armoredPrivate: encryptedKey.armor(),
+    armoredPublic:  encryptedKey.toPublic().armor(),
+  };
 }
 
 // ── Message encryption / decryption ──────────────────────────────────────────
