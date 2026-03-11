@@ -79,6 +79,9 @@ let _recipientResults = [];
 /** @type {Array<{id:string, name:string, contentType:string, size:number}>} */
 let _attachments = [];
 
+/** @type {Array<{id:string, name:string, contentType:string, size:number}>} */
+let _inlineAttachments = [];
+
 /** @type {Array<{email:string, key:openpgp.Key}>} */
 let _companyKeys = [];
 
@@ -262,6 +265,7 @@ function loadAttachments() {
         : (item.attachments || []);   // graceful fallback for older hosts
 
       _attachments = raw.filter(a => !a.isInline);
+      _inlineAttachments = raw.filter(a => a.isInline);
 
       if (_attachments.length === 0) {
         empty.classList.remove('pgp-hidden');
@@ -430,10 +434,13 @@ async function handleEncrypt() {
       return;
     }
 
-    // Warn if the body references cid: inline attachments (e.g. embedded images).
+    // Warn if the Office API reports inline attachments (e.g. embedded images).
     // These are incompatible with PGP encryption — the cid: URIs cannot be
     // resolved after the body is replaced with armor text.
-    if (/\bcid:/i.test(bodyHtml)) {
+    // We rely on the API's isInline flag rather than scanning the body HTML for
+    // "cid:" strings, because Outlook's HTML template may inject cid: references
+    // (e.g. for signatures) even when the user has not embedded any images.
+    if (_inlineAttachments.length > 0) {
       const proceed = await confirmInlineAttachments();
       if (!proceed) throw new Error('Cancelled by user.');
     }
@@ -552,6 +559,7 @@ async function encryptAttachments(encryptionKeys, signingKey) {
 
   // Refresh attachment list display
   _attachments = [];
+  _inlineAttachments = [];
   loadAttachments();
 }
 
