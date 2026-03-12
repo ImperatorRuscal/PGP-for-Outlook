@@ -409,11 +409,14 @@ export async function encryptMessage(text, recipientPublicKeys, signingKey = nul
   try {
     return await openpgp.encrypt(options);
   } catch (err) {
-    if (_isWeakKeyError(err)) {
-      // At least one recipient has a legacy key (e.g. DSA+ElGamal).
-      // Re-attempt with a permissive config that allows ElGamal.
-      // The caller should warn the user separately via hasWeakEncryptionKey().
-      return await openpgp.encrypt({ ...options, config: _buildPermissiveConfig() });
+    // At least one recipient has a legacy key.  Two distinct failure modes:
+    //   _isWeakKeyError       — ElGamal/DSA key rejected by rejectPublicKeyAlgorithms
+    //   _isLegacySelfSigError — recipient's key has SHA-1 self-signatures, rejected by
+    //                           rejectHashAlgorithms during getEncryptionKey() validation
+    // Both are resolved by _buildLegacyKeyReadConfig(), which removes SHA-1 from the
+    // rejected hash set AND removes DSA/ElGamal from the rejected PK algorithm set.
+    if (_isWeakKeyError(err) || _isLegacySelfSigError(err)) {
+      return await openpgp.encrypt({ ...options, config: _buildLegacyKeyReadConfig() });
     }
     throw err;
   }
@@ -490,8 +493,8 @@ export async function encryptAttachment(data, filename, recipientPublicKeys, sig
   try {
     return await openpgp.encrypt(options);
   } catch (err) {
-    if (_isWeakKeyError(err)) {
-      return await openpgp.encrypt({ ...options, config: _buildPermissiveConfig() });
+    if (_isWeakKeyError(err) || _isLegacySelfSigError(err)) {
+      return await openpgp.encrypt({ ...options, config: _buildLegacyKeyReadConfig() });
     }
     throw err;
   }

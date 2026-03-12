@@ -118,7 +118,13 @@ async function refreshMyKeyPanel() {
       const armoredPublic = getPublicKey();
       if (armoredPublic) {
         hasModernSubkeys(armoredPublic).then(alreadyModern => {
-          el('panel-add-subkeys-trigger').classList.toggle('pgp-hidden', alreadyModern);
+          if (alreadyModern) {
+            // Modern ECC subkeys already present — no action needed; suppress the warning.
+            el('key-legacy-row').classList.add('pgp-hidden');
+            el('panel-add-subkeys-trigger').classList.add('pgp-hidden');
+          } else {
+            el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
+          }
         }).catch(() => {
           // On error, show the button anyway — addModernSubkeys will handle it
           el('panel-add-subkeys-trigger').classList.remove('pgp-hidden');
